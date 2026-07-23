@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/client/">
+    <Project Path="client/LivingRealms.Client/LivingRealms.Client.csproj">
+      <BuildType Project="Debug" />
+    </Project>
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/LivingRealms.Api/LivingRealms.Api.csproj" />
+    <Project Path="src/LivingRealms.DiscordBot/LivingRealms.DiscordBot.csproj" />
+    <Project Path="src/LivingRealms.Domain/LivingRealms.Domain.csproj" />
+    <Project Path="src/LivingRealms.Infrastructure/LivingRealms.Infrastructure.csproj" />
+    <Project Path="src/LivingRealms.Worker/LivingRealms.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LivingRealms.Api.Tests/LivingRealms.Api.Tests.csproj" />
+    <Project Path="tests/LivingRealms.DiscordBot.Tests/LivingRealms.DiscordBot.Tests.csproj" />
+    <Project Path="tests/LivingRealms.Domain.Tests/LivingRealms.Domain.Tests.csproj" />
+  </Folder>
+</Solution>

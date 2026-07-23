@@ -1,0 +1,352 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://Scripts/Main.cs" id="1_main"]
+[ext_resource type="Texture2D" path="res://Assets/header-logo-64.png" id="2_logo"]
+[ext_resource type="Texture2D" path="res://Assets/Characters/alden.png" id="3_alden"]
+[ext_resource type="Texture2D" path="res://Assets/Characters/elara.png" id="4_elara"]
+
+[sub_resource type="StyleBoxFlat" id="StylePanel"]
+bg_color = Color(0.035, 0.035, 0.045, 0.97)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.64, 0.45, 0.16, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+content_margin_left = 24.0
+content_margin_top = 20.0
+content_margin_right = 24.0
+content_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxFlat" id="StyleButton"]
+bg_color = Color(0.28, 0.025, 0.025, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.72, 0.5, 0.18, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+content_margin_left = 16.0
+content_margin_top = 9.0
+content_margin_right = 16.0
+content_margin_bottom = 9.0
+
+[sub_resource type="StyleBoxFlat" id="StyleButtonHover"]
+bg_color = Color(0.48, 0.045, 0.035, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.73, 0.3, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+content_margin_left = 16.0
+content_margin_top = 9.0
+content_margin_right = 16.0
+content_margin_bottom = 9.0
+
+[node name="Main" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_main")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.008, 0.008, 0.012, 1)
+
+[node name="Page" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 36
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 36
+theme_override_constants/margin_bottom = 24
+
+[node name="Layout" type="VBoxContainer" parent="Page"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Header" type="HBoxContainer" parent="Page/Layout"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Logo" type="TextureRect" parent="Page/Layout/Header"]
+custom_minimum_size = Vector2(64, 64)
+layout_mode = 2
+texture = ExtResource("2_logo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Titles" type="VBoxContainer" parent="Page/Layout/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Title" type="Label" parent="Page/Layout/Header/Titles"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94, 0.72, 0.29, 1)
+theme_override_font_sizes/font_size = 32
+text = "LIVING REALMS"
+
+[node name="Tagline" type="Label" parent="Page/Layout/Header/Titles"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.08, 0.055, 1)
+theme_override_font_sizes/font_size = 18
+text = "THE WORLD REMEMBERS"
+
+[node name="Phase" type="Label" parent="Page/Layout/Header"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.72, 0.65, 0.52, 1)
+theme_override_font_sizes/font_size = 16
+text = "BUILD 0.9.1 - SHARED WORLD"
+vertical_alignment = 1
+
+[node name="Rule" type="HSeparator" parent="Page/Layout"]
+layout_mode = 2
+theme_override_colors/separator = Color(0.54, 0.32, 0.1, 1)
+
+[node name="Content" type="CenterContainer" parent="Page/Layout"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="AuthPanel" type="PanelContainer" parent="Page/Layout/Content"]
+custom_minimum_size = Vector2(540, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StylePanel")
+
+[node name="Fields" type="VBoxContainer" parent="Page/Layout/Content/AuthPanel"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Heading" type="Label" parent="Page/Layout/Content/AuthPanel/Fields"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94, 0.72, 0.29, 1)
+theme_override_font_sizes/font_size = 25
+text = "Enter the Realm"
+horizontal_alignment = 1
+
+[node name="Help" type="Label" parent="Page/Layout/Content/AuthPanel/Fields"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.7, 0.66, 0.6, 1)
+text = "Create an account or sign in to defend Stonehaven Valley."
+horizontal_alignment = 1
+
+[node name="EmailLabel" type="Label" parent="Page/Layout/Content/AuthPanel/Fields"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.64, 0.31, 1)
+text = "Email"
+
+[node name="Email" type="LineEdit" parent="Page/Layout/Content/AuthPanel/Fields"]
+layout_mode = 2
+placeholder_text = "player@example.com"
+
+[node name="PasswordLabel" type="Label" parent="Page/Layout/Content/AuthPanel/Fields"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.64, 0.31, 1)
+text = "Password"
+
+[node name="PasswordRow" type="HBoxContainer" parent="Page/Layout/Content/AuthPanel/Fields"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Password" type="LineEdit" parent="Page/Layout/Content/AuthPanel/Fields/PasswordRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "12+ characters with upper, lower, number, symbol"
+secret = true
+
+[node name="TogglePassword" type="Button" parent="Page/Layout/Content/AuthPanel/Fields/PasswordRow"]
+custom_minimum_size = Vector2(48, 0)
+layout_mode = 2
+tooltip_text = "Show password"
+toggle_mode = true
+theme_override_colors/font_color = Color(0.97, 0.78, 0.38, 1)
+theme_override_font_sizes/font_size = 20
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "👁"
+
+[node name="Actions" type="HBoxContainer" parent="Page/Layout/Content/AuthPanel/Fields"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 12
+
+[node name="Login" type="Button" parent="Page/Layout/Content/AuthPanel/Fields/Actions"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.78, 0.38, 1)
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "Portal Login"
+
+[node name="Register" type="Button" parent="Page/Layout/Content/AuthPanel/Fields/Actions"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.78, 0.38, 1)
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "Create Player Account"
+
+[node name="Status" type="Label" parent="Page/Layout/Content/AuthPanel/Fields"]
+custom_minimum_size = Vector2(0, 38)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.66, 0.29, 1)
+text = "Live Realm server ready. Sign in or create a player account."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="ApiAddress" type="Label" parent="Page/Layout/Content/AuthPanel/Fields"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45, 0.46, 0.48, 1)
+theme_override_font_sizes/font_size = 12
+horizontal_alignment = 1
+
+[node name="RealmPanel" type="PanelContainer" parent="Page/Layout/Content"]
+visible = false
+custom_minimum_size = Vector2(1050, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("StylePanel")
+
+[node name="Layout" type="VBoxContainer" parent="Page/Layout/Content/RealmPanel"]
+layout_mode = 2
+theme_override_constants/separation = 9
+
+[node name="AccountRow" type="HBoxContainer" parent="Page/Layout/Content/RealmPanel/Layout"]
+layout_mode = 2
+
+[node name="Welcome" type="Label" parent="Page/Layout/Content/RealmPanel/Layout/AccountRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.94, 0.72, 0.29, 1)
+theme_override_font_sizes/font_size = 21
+
+[node name="Logout" type="Button" parent="Page/Layout/Content/RealmPanel/Layout/AccountRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.97, 0.78, 0.38, 1)
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "Log Out"
+
+[node name="Prompt" type="Label" parent="Page/Layout/Content/RealmPanel/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.14, 0.09, 1)
+theme_override_font_sizes/font_size = 18
+text = "Choose a character to enter Stonehaven Valley"
+horizontal_alignment = 1
+
+[node name="CharacterRow" type="HBoxContainer" parent="Page/Layout/Content/RealmPanel/Layout"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 24
+
+[node name="AldenCard" type="VBoxContainer" parent="Page/Layout/Content/RealmPanel/Layout/CharacterRow"]
+layout_mode = 2
+
+[node name="AldenButton" type="TextureButton" parent="Page/Layout/Content/RealmPanel/Layout/CharacterRow/AldenCard"]
+custom_minimum_size = Vector2(410, 180)
+layout_mode = 2
+texture_normal = ExtResource("3_alden")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="Label" type="Label" parent="Page/Layout/Content/RealmPanel/Layout/CharacterRow/AldenCard"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94, 0.72, 0.29, 1)
+theme_override_font_sizes/font_size = 18
+text = "ALDEN — VANGUARD"
+horizontal_alignment = 1
+
+[node name="ElaraCard" type="VBoxContainer" parent="Page/Layout/Content/RealmPanel/Layout/CharacterRow"]
+layout_mode = 2
+
+[node name="ElaraButton" type="TextureButton" parent="Page/Layout/Content/RealmPanel/Layout/CharacterRow/ElaraCard"]
+custom_minimum_size = Vector2(410, 180)
+layout_mode = 2
+texture_normal = ExtResource("4_elara")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="Label" type="Label" parent="Page/Layout/Content/RealmPanel/Layout/CharacterRow/ElaraCard"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.94, 0.72, 0.29, 1)
+theme_override_font_sizes/font_size = 18
+text = "ELARA — RANGER"
+horizontal_alignment = 1
+
+[node name="CharacterDetails" type="Label" parent="Page/Layout/Content/RealmPanel/Layout"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.77, 0.72, 0.63, 1)
+text = "Select Alden or Elara to restore their saved location and enter the 3D world."
+horizontal_alignment = 1
+
+[node name="PositionRow" type="HBoxContainer" parent="Page/Layout/Content/RealmPanel/Layout"]
+visible = false
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 10
+
+[node name="PositionLabel" type="Label" parent="Page/Layout/Content/RealmPanel/Layout/PositionRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.82, 0.64, 0.31, 1)
+text = "Saved Position"
+vertical_alignment = 1
+
+[node name="X" type="SpinBox" parent="Page/Layout/Content/RealmPanel/Layout/PositionRow"]
+custom_minimum_size = Vector2(135, 0)
+layout_mode = 2
+min_value = -100000.0
+max_value = 100000.0
+step = 0.1
+prefix = "X  "
+
+[node name="Y" type="SpinBox" parent="Page/Layout/Content/RealmPanel/Layout/PositionRow"]
+custom_minimum_size = Vector2(135, 0)
+layout_mode = 2
+min_value = -100000.0
+max_value = 100000.0
+step = 0.1
+prefix = "Y  "
+
+[node name="Z" type="SpinBox" parent="Page/Layout/Content/RealmPanel/Layout/PositionRow"]
+custom_minimum_size = Vector2(135, 0)
+layout_mode = 2
+min_value = -100000.0
+max_value = 100000.0
+step = 0.1
+prefix = "Z  "
+
+[node name="SavePosition" type="Button" parent="Page/Layout/Content/RealmPanel/Layout/PositionRow"]
+layout_mode = 2
+disabled = true
+theme_override_colors/font_color = Color(0.97, 0.78, 0.38, 1)
+theme_override_styles/normal = SubResource("StyleButton")
+theme_override_styles/hover = SubResource("StyleButtonHover")
+text = "Save Position"
+
+[node name="Status" type="Label" parent="Page/Layout/Content/RealmPanel/Layout"]
+custom_minimum_size = Vector2(0, 24)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.14, 0.09, 1)
+horizontal_alignment = 1
+
+[node name="HttpRequest" type="HTTPRequest" parent="."]
+timeout = 15.0

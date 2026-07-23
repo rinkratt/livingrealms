@@ -1,0 +1,2 @@
+<footer class="site-footer"><div class="footer-inner"><div><strong>The World Remembers.</strong><br><span>&copy; <?= date('Y') ?> Living Realms. All rights reserved.</span></div><nav class="footer-links" aria-label="Footer"><a href="/the-world/">The World</a><a href="/chronicles/">Chronicles</a><a href="/join-the-realm/">Join</a><a href="<?= is_admin() ? '/portal-feedback.php' : '/feedback.php' ?>">Feedback</a><a href="/privacy.php">Privacy</a><?php if (is_admin()): ?><a href="/logout.php">Log out</a><?php endif; ?></nav></div></footer>
+</div></body></html>

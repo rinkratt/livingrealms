@@ -1,0 +1,10 @@
+root = true
+
+[*.cs]
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+
+[src/LivingRealms.Infrastructure/Persistence/Migrations/*.cs]
+# EF Core owns generated migration structure; do not hand-optimize generated arrays.
+dotnet_diagnostic.CA1861.severity = none

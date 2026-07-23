@@ -1,0 +1,24 @@
+[Unit]
+Description=Living Realms persistent world simulation worker
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rinkratt-lr
+Group=psacln
+WorkingDirectory=/var/www/vhosts/living-realms.com/private/living-realms-api/worker
+EnvironmentFile=/var/www/vhosts/living-realms.com/private/living-realms-api/.env
+ExecStart=/var/www/vhosts/living-realms.com/private/living-realms-api/worker/LivingRealms.Worker
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

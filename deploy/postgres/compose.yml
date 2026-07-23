@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: living-realms-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: living_realms_dev
+      POSTGRES_USER: living_realms
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U living_realms -d living_realms_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
