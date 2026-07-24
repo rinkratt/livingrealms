@@ -73,6 +73,33 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
             Assert.Contains("\"worldHours\":24", persistedEvents[0].PayloadJson, StringComparison.Ordinal);
             Assert.Single(await diagnosticDatabase.WorldHistory.Where(x => x.EventType == "faction_progressed").ToListAsync());
             Assert.Equal(24, persistedHours);
+
+            var projects = await diagnosticDatabase.ConstructionProjects
+                .Where(x => x.Id == LivingRealmsDbContext.StonehavenWallProjectId ||
+                            x.Id == LivingRealmsDbContext.DarkwoodPalisadeProjectId)
+                .ToDictionaryAsync(x => x.Id);
+            var wall = projects[LivingRealmsDbContext.StonehavenWallProjectId];
+            Assert.True(wall.WoodContributed > 0);
+            Assert.True(wall.StoneContributed > 0);
+            Assert.NotNull(wall.LastNpcContributionAt);
+            var palisade = projects[LivingRealmsDbContext.DarkwoodPalisadeProjectId];
+            Assert.True(palisade.WoodContributed > 0);
+            Assert.True(palisade.StoneContributed > 0);
+            Assert.NotNull(palisade.LastNpcContributionAt);
+
+            Assert.Contains(
+                await diagnosticDatabase.SettlementResidents
+                    .Where(x => x.SettlementId == LivingRealmsDbContext.StonehavenVillageId)
+                    .ToListAsync(),
+                x => x.Name == "Aveline Hart" &&
+                     x.Role == "Miner" &&
+                     x.Status == ResidentStatus.Active);
+            Assert.Contains(
+                await diagnosticDatabase.ResourceContributions.ToListAsync(),
+                x => x.Source == "WorldSimulation" && x.ContributorName == "Nessa");
+            Assert.Contains(
+                await diagnosticDatabase.ResourceContributions.ToListAsync(),
+                x => x.Source == "WorldSimulation" && x.ContributorName == "Skrit");
         }
         Assert.Equal(1, advanced.Run.EventsProcessed);
         Assert.Equal(24, advanced.World.SimulatedHours);

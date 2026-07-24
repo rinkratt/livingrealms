@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.2
+LIVING REALMS WINDOWS PLAYTEST 0.9.3
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,7 +35,7 @@ IMPORTANT CONTROLS
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
 
-BUILD 0.9.2
+BUILD 0.9.3
 - The 3x3 valley is divided into nine connected 96-by-96-meter regions that
   load the current cell and its directly connected neighbors.
 - A1 remains the Test Creatures area. A2 now contains Mirrorwater Lake and a

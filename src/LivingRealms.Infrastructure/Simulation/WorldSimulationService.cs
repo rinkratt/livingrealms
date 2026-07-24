@@ -596,6 +596,22 @@ public sealed partial class WorldSimulationService(
             await population.EnsureStonehavenResidentsAsync(saveChanges: false, cancellationToken);
         }
 
+        var constructionProjects = await database.ConstructionProjects
+            .Where(x => x.Id == LivingRealmsDbContext.StonehavenWallProjectId ||
+                        x.Id == LivingRealmsDbContext.DarkwoodPalisadeProjectId)
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+        var stonehavenWall = constructionProjects[LivingRealmsDbContext.StonehavenWallProjectId];
+        var darkwoodPalisade = constructionProjects[LivingRealmsDbContext.DarkwoodPalisadeProjectId];
+        AdvanceSettlementConstruction(
+            payload.WorldHours,
+            payload.ProcessedAt,
+            faction,
+            settlement,
+            activeStonehavenResidents,
+            creatures,
+            stonehavenWall,
+            darkwoodPalisade);
+
         if (faction.DevelopmentStage == 1 &&
             faction.Population >= 8 &&
             resources[ResourceKind.Food].Amount >= 100 &&
@@ -617,7 +633,8 @@ public sealed partial class WorldSimulationService(
             faction.Population >= 14 &&
             resources[ResourceKind.Wood].Amount >= 180 &&
             resources[ResourceKind.Stone].Amount >= 80 &&
-            resources[ResourceKind.Iron].Amount >= 30)
+            resources[ResourceKind.Iron].Amount >= 30 &&
+            darkwoodPalisade.CurrentLevel >= darkwoodPalisade.MaximumLevel)
         {
             resources[ResourceKind.Wood].Amount -= 120;
             resources[ResourceKind.Stone].Amount -= 70;
@@ -660,12 +677,8 @@ public sealed partial class WorldSimulationService(
                 ? "Goblin Chieftain"
                 : "Goblin Chief";
         faction.LeaderCreatureId = leader.Id;
-        var palisadeLevel = await database.ConstructionProjects.AsNoTracking()
-            .Where(x => x.Id == LivingRealmsDbContext.DarkwoodPalisadeProjectId)
-            .Select(x => x.CurrentLevel)
-            .SingleOrDefaultAsync(cancellationToken);
         faction.MilitaryStrength = faction.Population * 6 + leader.Level * 8 +
-                                   faction.DevelopmentStage * 25 + palisadeLevel * 14;
+                                   faction.DevelopmentStage * 25 + darkwoodPalisade.CurrentLevel * 14;
         faction.TerritorySize = faction.DevelopmentStage;
         faction.Aggression = Math.Min(100, faction.Aggression + Math.Max(0, faction.DevelopmentStage - stageBefore) * 5);
         faction.LastProcessedAt = payload.ProcessedAt;
@@ -784,6 +797,171 @@ public sealed partial class WorldSimulationService(
             payload.ProcessedAt,
             cancellationToken);
     }
+
+    private void AdvanceSettlementConstruction(
+        int worldHours,
+        DateTimeOffset processedAt,
+        Faction faction,
+        Settlement settlement,
+        IReadOnlyCollection<SettlementResident> residents,
+        IReadOnlyCollection<Creature> creatures,
+        ConstructionProject stonehavenWall,
+        ConstructionProject darkwoodPalisade)
+    {
+        var nessaWorking = residents.Any(x =>
+            x.Name.Equals("Nessa", StringComparison.OrdinalIgnoreCase) &&
+            x.Status is ResidentStatus.Active or ResidentStatus.Injured &&
+            x.Health > 0);
+        var dainWorking = residents.Any(x =>
+            x.Name.Equals("Dain", StringComparison.OrdinalIgnoreCase) &&
+            x.Status is ResidentStatus.Active or ResidentStatus.Injured &&
+            x.Health > 0);
+        var skritWorking = creatures.Any(x =>
+            x.Name.Equals("Skrit", StringComparison.OrdinalIgnoreCase) &&
+            x.Status == CreatureStatus.Alive &&
+            IsAtDarkwoodCamp(x));
+        var vrakWorking = creatures.Any(x =>
+            x.Name.Equals("Vrak", StringComparison.OrdinalIgnoreCase) &&
+            x.Status == CreatureStatus.Alive &&
+            IsAtDarkwoodCamp(x));
+
+        var nessaWood = 0;
+        var dainStone = 0;
+        var skritWood = 0;
+        var vrakStone = 0;
+        for (var hour = 0; hour < worldHours; hour++)
+        {
+            var wallWork = ApplySimulatedProjectWork(
+                stonehavenWall,
+                nessaWorking ? 5 : 0,
+                dainWorking ? 4 : 0,
+                "Nessa and Dain",
+                processedAt,
+                faction,
+                settlement);
+            nessaWood += wallWork.Wood;
+            dainStone += wallWork.Stone;
+
+            var palisadeWork = ApplySimulatedProjectWork(
+                darkwoodPalisade,
+                skritWorking ? 6 : 0,
+                vrakWorking ? 3 : 0,
+                "Skrit and Vrak",
+                processedAt,
+                faction,
+                settlement);
+            skritWood += palisadeWork.Wood;
+            vrakStone += palisadeWork.Stone;
+        }
+
+        AddSimulatedContribution(stonehavenWall.Id, "Nessa", ResourceKind.Wood, nessaWood, processedAt);
+        AddSimulatedContribution(stonehavenWall.Id, "Dain", ResourceKind.Stone, dainStone, processedAt);
+        AddSimulatedContribution(darkwoodPalisade.Id, "Skrit", ResourceKind.Wood, skritWood, processedAt);
+        AddSimulatedContribution(darkwoodPalisade.Id, "Vrak", ResourceKind.Stone, vrakStone, processedAt);
+    }
+
+    private (int Wood, int Stone) ApplySimulatedProjectWork(
+        ConstructionProject project,
+        int wood,
+        int stone,
+        string workers,
+        DateTimeOffset processedAt,
+        Faction faction,
+        Settlement settlement)
+    {
+        if (project.CompletedAt is not null || project.CurrentLevel >= project.MaximumLevel)
+        {
+            return (0, 0);
+        }
+
+        var woodApplied = Math.Min(wood, Math.Max(0, project.WoodRequired - project.WoodContributed));
+        var stoneApplied = Math.Min(stone, Math.Max(0, project.StoneRequired - project.StoneContributed));
+        project.WoodContributed += woodApplied;
+        project.StoneContributed += stoneApplied;
+        if (woodApplied > 0 || stoneApplied > 0)
+        {
+            project.LastNpcContributionAt = processedAt;
+            project.UpdatedAt = processedAt;
+        }
+
+        if (project.WoodContributed < project.WoodRequired ||
+            project.StoneContributed < project.StoneRequired)
+        {
+            return (woodApplied, stoneApplied);
+        }
+
+        project.CurrentLevel++;
+        if (project.Id == LivingRealmsDbContext.StonehavenWallProjectId)
+        {
+            settlement.DefenseRating += 12;
+            settlement.GuardStrength += 4;
+            settlement.StructuralIntegrity += 220;
+            settlement.UpdatedAt = processedAt;
+        }
+        else if (project.Id == LivingRealmsDbContext.DarkwoodPalisadeProjectId)
+        {
+            faction.MilitaryStrength += 14;
+            faction.Morale = Math.Min(100, faction.Morale + 3);
+            faction.UpdatedAt = processedAt;
+        }
+
+        var completed = project.CurrentLevel >= project.MaximumLevel;
+        if (completed)
+        {
+            project.CompletedAt = processedAt;
+        }
+        else
+        {
+            project.WoodContributed = 0;
+            project.StoneContributed = 0;
+            project.WoodRequired = (int)MathF.Ceiling(project.WoodRequired * 1.35f);
+            project.StoneRequired = (int)MathF.Ceiling(project.StoneRequired * 1.35f);
+        }
+        project.UpdatedAt = processedAt;
+        database.WorldHistory.Add(new WorldHistory
+        {
+            EventType = completed ? "construction_completed" : "construction_upgraded",
+            Title = completed
+                ? $"{project.Name} reached its final tier"
+                : $"{project.Name} reached level {project.CurrentLevel}",
+            Description = $"{workers} supplied the final materials through the persistent world simulation.",
+            RegionId = LivingRealmsDbContext.StonehavenValleyId,
+            FactionId = project.FactionId,
+            OccurredAt = processedAt,
+            ImportanceLevel = 3,
+            CreatedAt = processedAt,
+            UpdatedAt = processedAt
+        });
+        return (woodApplied, stoneApplied);
+    }
+
+    private void AddSimulatedContribution(
+        Guid projectId,
+        string contributor,
+        ResourceKind kind,
+        int amount,
+        DateTimeOffset processedAt)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        database.ResourceContributions.Add(new ResourceContribution
+        {
+            ConstructionProjectId = projectId,
+            ContributorName = contributor,
+            Kind = kind,
+            Amount = amount,
+            Source = "WorldSimulation",
+            OccurredAt = processedAt,
+            CreatedAt = processedAt,
+            UpdatedAt = processedAt
+        });
+    }
+
+    private static bool IsAtDarkwoodCamp(Creature creature) =>
+        creature.PositionX < -80.0f && creature.PositionZ < -70.0f;
 
     private async Task<int> RecoverInterruptedEventsAsync(
         DateTimeOffset processedAt,

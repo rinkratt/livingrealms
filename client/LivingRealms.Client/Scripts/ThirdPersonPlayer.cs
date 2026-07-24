@@ -12,6 +12,9 @@ public partial class ThirdPersonPlayer : CharacterBody3D
     private const float MinimumCameraDistance = 2.8f;
     private const float MaximumCameraDistance = 18.0f;
     private const float CameraZoomStep = 1.0f;
+    private const float CameraPivotHeight = 1.45f;
+    private const float MinimumCameraGroundClearance = 0.35f;
+    private const float MaximumUpwardCameraPitch = 0.18f;
 
     private readonly Color _gold = new("d8a94b");
     private Node3D _visualRoot = null!;
@@ -154,8 +157,8 @@ public partial class ThirdPersonPlayer : CharacterBody3D
             _cameraYawAngle -= mouseMotion.Relative.X * MouseSensitivity;
             _cameraPitchAngle = Mathf.Clamp(
                 _cameraPitchAngle - mouseMotion.Relative.Y * MouseSensitivity,
-                -0.95f,
-                0.45f);
+                -1.05f,
+                MaximumUpwardCameraPitch);
             _cameraYaw.Rotation = new Vector3(0, _cameraYawAngle, 0);
             _cameraPitch.Rotation = new Vector3(_cameraPitchAngle, 0, 0);
             return;
@@ -193,9 +196,17 @@ public partial class ThirdPersonPlayer : CharacterBody3D
         var seconds = (float)delta;
         if (IsInstanceValid(_springArm))
         {
+            var groundSafeDistance = _targetCameraDistance;
+            if (_cameraPitchAngle > 0.001f)
+            {
+                groundSafeDistance = Mathf.Min(
+                    groundSafeDistance,
+                    (CameraPivotHeight - MinimumCameraGroundClearance) /
+                    Mathf.Sin(_cameraPitchAngle));
+            }
             _springArm.SpringLength = Mathf.MoveToward(
                 _springArm.SpringLength,
-                _targetCameraDistance,
+                Mathf.Max(MinimumCameraDistance, groundSafeDistance),
                 9.0f * seconds);
         }
         _attackCooldown = Mathf.Max(0, _attackCooldown - seconds);
@@ -260,7 +271,7 @@ public partial class ThirdPersonPlayer : CharacterBody3D
         _cameraYaw = new Node3D
         {
             Name = "CameraYaw",
-            Position = new Vector3(0, 1.45f, 0)
+            Position = new Vector3(0, CameraPivotHeight, 0)
         };
         AddChild(_cameraYaw);
 
@@ -275,7 +286,8 @@ public partial class ThirdPersonPlayer : CharacterBody3D
         {
             Name = "CameraCollisionArm",
             SpringLength = _targetCameraDistance,
-            Margin = 0.15f,
+            Shape = new SphereShape3D { Radius = 0.24f },
+            Margin = 0.22f,
             CollisionMask = 1
         };
         _cameraPitch.AddChild(_springArm);

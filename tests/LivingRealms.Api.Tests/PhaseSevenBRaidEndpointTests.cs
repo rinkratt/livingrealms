@@ -472,6 +472,10 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             var settlement = await database.Settlements
                 .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
             settlement.Population = WorldPopulationService.StonehavenAssaultSoldiersRequired;
+            var palisade = await database.ConstructionProjects
+                .SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodPalisadeProjectId);
+            palisade.CurrentLevel = palisade.MaximumLevel;
+            palisade.CompletedAt = processedAt;
             await database.SaveChangesAsync();
             var population = populationScope.ServiceProvider.GetRequiredService<WorldPopulationService>();
             await population.EnsureStonehavenResidentsAsync();

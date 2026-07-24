@@ -37,10 +37,9 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         "Emeric Kest", "Freya Lang", "Godwin Mott", "Helena Norr", "Idris Orme"
     ];
 
-    private static readonly string[] StonehavenRoleCycle =
+    private static readonly string[] StonehavenArrivalRoleCycle =
     [
-        "Farmer", "Farmer", "Stonehaven Guard", "Stonehaven Guard", "Stonehaven Guard",
-        "Farmer", "Farmer", "Farmer", "Stonehaven Guard",
+        "Miner", "Fisher", "Farmer", "Farmer", "Stonehaven Guard",
         "Carpenter", "Carpenter", "Mason", "Mason", "Hunter", "Hunter", "Weaver", "Weaver",
         "Baker", "Fisher", "Tanner", "Brewer", "Stablehand", "Herbalist", "Scribe", "Potter"
     ];
@@ -73,18 +72,26 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         var knownNames = existing.Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var needed = Math.Max(0, settlement.Population - livingCount);
 
-        // Named residents who were away at the beginning return before new
-        // families are materialized. Dead residents remain in the Chronicle;
-        // population growth creates a different named person in their place.
+        // Legacy placeholder residents remain in the Chronicle, but population
+        // growth reintroduces them in the intentional arrival order. Mara is a
+        // story-specific missing resident and does not silently become a new
+        // arrival.
+        var arrivalNumber = Math.Max(0, livingCount - StartingStonehavenPopulation);
         foreach (var returning in existing
-                     .Where(x => x.Status == ResidentStatus.Missing)
+                     .Where(x => x.Status == ResidentStatus.Missing &&
+                                 x.Id != LivingRealmsDbContext.MaraResidentId)
                      .OrderBy(x => x.CreatedAt)
                      .ThenBy(x => x.Name)
                      .Take(needed))
         {
-            returning.Status = ResidentStatus.Active;
-            returning.Health = returning.MaximumHealth;
-            returning.UpdatedAt = DateTimeOffset.UtcNow;
+            var residentIndex = Array.FindIndex(
+                StonehavenNames,
+                candidate => candidate.Equals(returning.Name, StringComparison.OrdinalIgnoreCase));
+            ConfigureStonehavenArrival(
+                returning,
+                residentIndex >= 0 ? residentIndex : StartingStonehavenPopulation + arrivalNumber,
+                StonehavenArrivalRoleCycle[arrivalNumber % StonehavenArrivalRoleCycle.Length]);
+            arrivalNumber++;
             needed--;
         }
 
@@ -96,7 +103,11 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
                 continue;
             }
 
-            database.SettlementResidents.Add(CreateStonehavenResident(index, name));
+            database.SettlementResidents.Add(CreateStonehavenResident(
+                index,
+                name,
+                StonehavenArrivalRoleCycle[arrivalNumber % StonehavenArrivalRoleCycle.Length]));
+            arrivalNumber++;
             needed--;
         }
 
@@ -207,15 +218,14 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         }
     }
 
-    private static SettlementResident CreateStonehavenResident(int index, string name)
+    private static SettlementResident CreateStonehavenResident(int index, string name, string role)
     {
-        var role = StonehavenRoleCycle[index % StonehavenRoleCycle.Length];
         var canFight = role is "Stonehaven Guard" or "Hunter";
         var maximumHealth = role switch
         {
             "Stonehaven Guard" => 110,
             "Hunter" => 100,
-            "Mason" or "Carpenter" or "Farmer" => 95,
+            "Mason" or "Carpenter" or "Farmer" or "Miner" => 95,
             _ => 85
         };
         var (homeX, homeZ) = ResolveStonehavenHomePosition(index, role);
@@ -248,6 +258,35 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         };
     }
 
+    private static void ConfigureStonehavenArrival(
+        SettlementResident resident,
+        int index,
+        string role)
+    {
+        var maximumHealth = role switch
+        {
+            "Stonehaven Guard" => 110,
+            "Hunter" => 100,
+            "Mason" or "Carpenter" or "Farmer" or "Miner" => 95,
+            _ => 85
+        };
+        var home = ResolveStonehavenHomePosition(index, role);
+        var work = ResolveStonehavenWorkPosition(index, role);
+        resident.Role = role;
+        resident.MaximumHealth = maximumHealth;
+        resident.Health = maximumHealth;
+        resident.Status = ResidentStatus.Active;
+        resident.CanFight = role is "Stonehaven Guard" or "Hunter";
+        resident.HomeX = home.X;
+        resident.HomeY = 0.08f;
+        resident.HomeZ = home.Z;
+        resident.WorkX = work.X;
+        resident.WorkY = 0.08f;
+        resident.WorkZ = work.Z;
+        resident.Dialogue = DialogueFor(role);
+        resident.UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
     private static (float X, float Z) ResolveStonehavenWorkPosition(int index, string role) => role switch
     {
         "Stonehaven Guard" => (index % 4) switch
@@ -258,12 +297,13 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             _ => (26, -4 - index % 5 * 5)
         },
         "Farmer" => (-30 + index % 4 * 20, 76 + index / 4 % 2 * 25),
+        "Miner" => (114 + index % 3 * 3, -108 + index % 2 * 4),
         "Carpenter" => (-20 + index % 3 * 2, -18 + index % 2 * 3),
         "Mason" => (86 + index % 3 * 5, -91 + index % 2 * 6),
         "Hunter" => (-35 + index % 5 * 17, 25 + index % 3 * 8),
         "Weaver" => (-15 + index % 4 * 2, -8),
         "Baker" => (8 + index % 3 * 2, -9),
-        "Fisher" => (78 + index % 4 * 4, 1 + index % 3 * 2),
+        "Fisher" => (78 + index % 4 * 4, -20 + index % 3 * 2),
         "Tanner" => (-21 + index % 3 * 2, -26),
         "Brewer" => (13 + index % 3 * 2, -17),
         "Stablehand" => (21 + index % 3 * 2, -27),
@@ -290,12 +330,13 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
     {
         "Stonehaven Guard" => "My watch is marked on the roster. I know the wall section and the neighbors entrusted to me.",
         "Farmer" => "Stonehaven eats because these fields are worked in every season, not because food appears in a storehouse.",
+        "Miner" => "Irondeep is hard country, but every sound vein strengthens Stonehaven's tools, gates, and guard.",
         "Carpenter" => "A straight beam and a sound joint will outlast any hurried patchwork.",
         "Mason" => "Every fitted stone carries part of Stonehaven's defense.",
         "Hunter" => "I read tracks beyond the wall and bring warning home before trouble reaches the gate.",
         "Weaver" => "Cloth, cord, bandages, and winter wool all begin at my loom.",
         "Baker" => "The ovens start before sunrise so every worker can carry bread into the day.",
-        "Fisher" => "The river provides, but only for those who understand its current.",
+        "Fisher" => "Mirrorwater provides, but only for those who understand its depth, weather, and changing shore.",
         "Tanner" => "Nothing from a hunt should be wasted—not hide, sinew, or bone.",
         "Brewer" => "Clean water and a careful barrel keep spirits up and sickness down.",
         "Stablehand" => "A settlement moves at the pace of the animals it cares for.",

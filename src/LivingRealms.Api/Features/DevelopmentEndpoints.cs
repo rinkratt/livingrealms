@@ -289,6 +289,7 @@ public static class DevelopmentEndpoints
         node.RespawnAt = node.Remaining == 0 ? now.AddSeconds(node.RespawnSeconds) : null;
         node.UpdatedAt = now;
         var delivered = ApplyContribution(project, node.Kind, amount, now);
+        project.LastNpcContributionAt = now;
         if (worker.Value.Owner == ResourceOwner.Stonehaven)
         {
             // Stonehaven workers carry their gathered bundle directly to the assigned project.
