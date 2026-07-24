@@ -3731,10 +3731,12 @@ public partial class StonehavenValley : Node3D
 
     private static (string Code, string Name) GetWorldGrid(Vector3 position)
     {
-        var column = Math.Clamp(Mathf.FloorToInt((position.X + WorldHalfExtent) / WorldGridSize), 0, 2);
-        var row = Math.Clamp(Mathf.FloorToInt((position.Z + WorldHalfExtent) / WorldGridSize), 0, 2);
-        var code = $"{(char)('A' + column)}{row + 1}";
-        return (code, WorldGridNames[row, column]);
+        var physicalColumn = Math.Clamp(Mathf.FloorToInt((position.X + WorldHalfExtent) / WorldGridSize), 0, 2);
+        var physicalRow = Math.Clamp(Mathf.FloorToInt((position.Z + WorldHalfExtent) / WorldGridSize), 0, 2);
+        var displayColumn = 2 - physicalColumn;
+        var displayRow = 2 - physicalRow;
+        var code = $"{(char)('A' + displayColumn)}{displayRow + 1}";
+        return (code, WorldGridNames[physicalRow, physicalColumn]);
     }
 
     private sealed record NaturalResourceTarget(
