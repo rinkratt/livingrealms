@@ -8,7 +8,7 @@ namespace LivingRealms.Client;
 
 public partial class Main : Control
 {
-    private const string ClientVersion = "0.9.1";
+    private const string ClientVersion = "0.9.2";
     private const string UpdateManifestUrl = "https://living-realms.com/downloads/windows-version.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -1579,6 +1579,11 @@ public partial class Main : Control
             state.Settlement.Population,
             state.Settlement.LivingResidents,
             state.Settlement.CombatReadyResidents,
+            state.Settlement.HousingCapacity,
+            state.Settlement.Food,
+            state.Settlement.Wood,
+            state.Settlement.Stone,
+            state.Settlement.Iron,
             state.Settlement.DefenseRating,
             state.Settlement.GuardStrength,
             new WorldSettlementLeaderData(
@@ -2237,6 +2242,11 @@ public partial class Main : Control
         public int Population { get; init; }
         public int LivingResidents { get; init; }
         public int CombatReadyResidents { get; init; }
+        public int HousingCapacity { get; init; }
+        public int Food { get; init; }
+        public int Wood { get; init; }
+        public int Stone { get; init; }
+        public int Iron { get; init; }
         public int DefenseRating { get; init; }
         public int GuardStrength { get; init; }
         public WorldSettlementLeaderResponse Leader { get; init; } = new();

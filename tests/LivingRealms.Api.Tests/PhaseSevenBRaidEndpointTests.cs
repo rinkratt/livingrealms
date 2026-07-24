@@ -422,6 +422,10 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
         Assert.Equal(1000, settlement.StructuralIntegrity);
         Assert.Equal(8, settlement.Population);
+        Assert.Equal(WorldPopulationService.StartingStonehavenFood, settlement.Food);
+        Assert.Equal(WorldPopulationService.StartingStonehavenWood, settlement.Wood);
+        Assert.Equal(WorldPopulationService.StartingStonehavenStone, settlement.Stone);
+        Assert.Equal(WorldPopulationService.StartingStonehavenIron, settlement.Iron);
         Assert.Equal(8, settlement.Residents.Count(x => x.Status == ResidentStatus.Active));
         Assert.Single(settlement.Residents, x => x.Status == ResidentStatus.Missing);
         Assert.All(settlement.Residents.Where(x => x.Status == ResidentStatus.Active), x =>
@@ -462,6 +466,17 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
     public async Task LevelThreeCampAutomaticallyStartsAndResolvesStonehavenCounterattack()
     {
         var processedAt = new DateTimeOffset(2026, 7, 17, 18, 0, 0, TimeSpan.Zero);
+        using (var populationScope = _factory.Services.CreateScope())
+        {
+            var database = populationScope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
+            var settlement = await database.Settlements
+                .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
+            settlement.Population = WorldPopulationService.StonehavenAssaultSoldiersRequired;
+            await database.SaveChangesAsync();
+            var population = populationScope.ServiceProvider.GetRequiredService<WorldPopulationService>();
+            await population.EnsureStonehavenResidentsAsync();
+        }
+
         for (var step = 0; step < 4; step++)
         {
             using var scope = _factory.Services.CreateScope();

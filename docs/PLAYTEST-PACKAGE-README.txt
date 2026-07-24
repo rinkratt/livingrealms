@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.0
+LIVING REALMS WINDOWS PLAYTEST 0.9.2
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -26,14 +26,31 @@ IMPORTANT CONTROLS
 - Mouse: camera
 - Mouse wheel: zoom
 - Left click or F: attack
-- H: chop a nearby tree or mine nearby exposed stone
-- B: deposit carried timber and stone at a construction marker
+- H: chop a nearby tree or mine nearby exposed stone or iron
+- B: deposit carried construction materials at a project marker
 - I: inventory, capacity, gold, equipment, and buyers
 - R: talk to a nearby resident
 - U: return safely to Stonehaven's north gate if stuck
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.2
+- The 3x3 valley is divided into nine connected 96-by-96-meter regions that
+  load the current cell and its directly connected neighbors.
+- A1 remains the Test Creatures area. A2 now contains Mirrorwater Lake and a
+  dock. A3 contains Irondeep Mine and the relocated stone quarry.
+- B1 now contains eight working farm plots and two farmhouses. B2 remains
+  Stonehaven, and C3 remains Darkwood's goblin camp.
+- Stonehaven resets to 8 active named residents instead of reporting a hidden
+  population of 84.
+- At most one named resident can arrive per world day, and only when there is
+  housing plus enough naturally produced food, timber, stone, and iron.
+- The Living World panel now identifies Stonehaven's housing and supplies.
+
+BUILD 0.9.1
+- Players can press F9 or use the Realm Menu to report bugs and request
+  features, attach screenshots, and track player-visible ticket statuses.
 
 BUILD 0.9.0
 - Reset returns Stonehaven to 8 healthy residents and Darkwood to 7 goblins.

@@ -44,6 +44,11 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal("Stonehaven Village", initial.Settlement.Name);
         Assert.Equal(8, initial.Settlement.Population);
         Assert.Equal(8, initial.Settlement.LivingResidents);
+        Assert.Equal(24, initial.Settlement.HousingCapacity);
+        Assert.Equal(64, initial.Settlement.Food);
+        Assert.Equal(40, initial.Settlement.Wood);
+        Assert.Equal(24, initial.Settlement.Stone);
+        Assert.Equal(4, initial.Settlement.Iron);
         Assert.Equal("Captain Rowan", initial.Settlement.Leader.Name);
         Assert.Equal("Warden of Stonehaven", initial.Settlement.Leader.Title);
         Assert.Equal(6, initial.EventReadiness.DarkwoodRaid.Current);
@@ -80,6 +85,13 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal(204, advanced.World.Faction.Leader.MaximumHealth);
         Assert.Equal(25, advanced.World.Faction.Leader.Attack);
         Assert.Equal(16, advanced.World.Faction.Leader.Defense);
+        Assert.Equal(9, advanced.World.Settlement.Population);
+        Assert.Equal(9, advanced.World.Settlement.LivingResidents);
+        Assert.Equal(80, advanced.World.Settlement.Food);
+        Assert.Equal(44, advanced.World.Settlement.Wood);
+        Assert.Equal(36, advanced.World.Settlement.Stone);
+        Assert.Equal(14, advanced.World.Settlement.Iron);
+        Assert.Contains(advanced.World.RecentHistory, x => x.EventType == "stonehaven_population_growth");
         Assert.Contains(advanced.World.Faction.Structures, x => x.Name == "Timber Palisade");
         Assert.Contains(advanced.World.Faction.Structures, x => x.Name == "Hunter Lodge");
         Assert.Equal(0, advanced.World.Events.Pending);
@@ -270,6 +282,11 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         int Population,
         int LivingResidents,
         int CombatReadyResidents,
+        int HousingCapacity,
+        int Food,
+        int Wood,
+        int Stone,
+        int Iron,
         int DefenseRating,
         int GuardStrength,
         SettlementLeaderResponse Leader);

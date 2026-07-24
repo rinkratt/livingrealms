@@ -177,10 +177,10 @@ public sealed partial class WorldSimulationService(
                 .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId, cancellationToken);
             settlement.Population = WorldPopulationService.StartingStonehavenPopulation;
             settlement.StructuralIntegrity = 1000;
-            settlement.Food = 420;
-            settlement.Wood = 180;
-            settlement.Stone = 120;
-            settlement.Iron = 35;
+            settlement.Food = WorldPopulationService.StartingStonehavenFood;
+            settlement.Wood = WorldPopulationService.StartingStonehavenWood;
+            settlement.Stone = WorldPopulationService.StartingStonehavenStone;
+            settlement.Iron = WorldPopulationService.StartingStonehavenIron;
             settlement.DefenseRating = 65;
             settlement.GuardStrength = 42;
             settlement.LastAttackedAt = null;
@@ -500,6 +500,11 @@ public sealed partial class WorldSimulationService(
             .Include(x => x.Species)
             .Where(x => x.RegionId == LivingRealmsDbContext.StonehavenValleyId)
             .ToListAsync(cancellationToken);
+        var activeStonehavenResidents = await database.SettlementResidents
+            .Where(x => x.SettlementId == settlement.Id &&
+                        x.Health > 0 &&
+                        (x.Status == ResidentStatus.Active || x.Status == ResidentStatus.Injured))
+            .ToListAsync(cancellationToken);
 
         var resources = faction.Resources.ToDictionary(x => x.Kind);
         var foodBefore = resources[ResourceKind.Food].Amount;
@@ -533,22 +538,52 @@ public sealed partial class WorldSimulationService(
             resources[ResourceKind.Food].Amount -= 15;
         }
 
-        settlement.Food += Math.Max(1, settlement.Population / 2) * payload.WorldHours;
-        settlement.Wood += Math.Max(1, payload.WorldHours / 3);
-        settlement.Stone += Math.Max(1, payload.WorldHours / 6);
-        var previousStonehavenGrowthCycles = simulatedHoursBefore / 6;
-        var currentStonehavenGrowthCycles = faction.SimulatedHours / 6;
-        var possibleStonehavenGrowth = (int)Math.Min(28,
+        var farmers = activeStonehavenResidents.Count(x => x.Role == "Farmer");
+        var huntersAndFishers = activeStonehavenResidents.Count(x => x.Role is "Hunter" or "Fisher");
+        var lumberjacks = activeStonehavenResidents.Count(x => x.Role == "Lumberjack");
+        var quarryWorkers = activeStonehavenResidents.Count(x => x.Role is "Quarry Worker" or "Mason");
+        var ironWorkers = activeStonehavenResidents.Count(x => x.Role is "Quarry Worker" or "Blacksmith");
+        var foodProducedPerHour = WorldPopulationService.StonehavenFarmPlotCount / 2 +
+                                  farmers * 2 + huntersAndFishers;
+        var foodConsumedPerHour = Math.Max(1, (settlement.Population + 3) / 4);
+        settlement.Food = Math.Max(0,
+            settlement.Food + (foodProducedPerHour - foodConsumedPerHour) * payload.WorldHours);
+        settlement.Wood = Math.Min(700,
+            settlement.Wood + Math.Max(0, lumberjacks) * payload.WorldHours);
+        settlement.Stone = Math.Min(700,
+            settlement.Stone + Math.Max(0, quarryWorkers) * payload.WorldHours);
+        var previousIronCycles = simulatedHoursBefore / 4;
+        var currentIronCycles = faction.SimulatedHours / 4;
+        settlement.Iron = Math.Min(350,
+            settlement.Iron + (int)Math.Max(0, currentIronCycles - previousIronCycles) * ironWorkers);
+
+        var previousStonehavenGrowthCycles = simulatedHoursBefore / 24;
+        var currentStonehavenGrowthCycles = faction.SimulatedHours / 24;
+        var possibleStonehavenGrowth = (int)Math.Min(7,
             currentStonehavenGrowthCycles - previousStonehavenGrowthCycles);
         for (var cycle = 0; cycle < possibleStonehavenGrowth; cycle++)
         {
-            if (settlement.IsDestroyed || settlement.Population >= 84 || settlement.Food < 12)
+            var nextPopulation = settlement.Population + 1;
+            var foodReserve = nextPopulation * 6;
+            const int arrivalFoodCost = 32;
+            const int arrivalWoodCost = 20;
+            const int arrivalStoneCost = 12;
+            const int arrivalIronCost = 2;
+            if (settlement.IsDestroyed ||
+                settlement.Population >= WorldPopulationService.StonehavenHousingCapacity ||
+                settlement.Food < foodReserve + arrivalFoodCost ||
+                settlement.Wood < arrivalWoodCost ||
+                settlement.Stone < arrivalStoneCost ||
+                settlement.Iron < arrivalIronCost)
             {
                 break;
             }
 
             settlement.Population++;
-            settlement.Food -= 12;
+            settlement.Food -= arrivalFoodCost;
+            settlement.Wood -= arrivalWoodCost;
+            settlement.Stone -= arrivalStoneCost;
+            settlement.Iron -= arrivalIronCost;
         }
         settlement.GuardStrength = Math.Max(
             settlement.GuardStrength,

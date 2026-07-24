@@ -16,6 +16,9 @@ public partial class StonehavenValley : Node3D
     private const float DarkwoodCampClearingRadius = 19.5f;
     private const string StylizedEnvironmentScenePath = "res://Assets/Environment/stonehaven_vertical_slice.glb";
     private static readonly Vector3 DarkwoodCampCenter = new(-116.0f, 0, -104.0f);
+    private static readonly Vector3 MirrorwaterLakeCenter = new(101.0f, 0, 1.0f);
+    private static readonly Vector3 IronMineCenter = new(104.0f, 0, -104.0f);
+    private static readonly Vector3 StonehavenFarmlandCenter = new(0, 0, 96.0f);
     private static readonly Vector2 StonehavenLumberYardCenter = new(-22.0f, -19.5f);
     private static readonly Vector2 StonehavenLumberYardClearance = new(5.25f, 4.0f);
     private static readonly Color Gold = new("d8a94b");
@@ -24,9 +27,9 @@ public partial class StonehavenValley : Node3D
     private static readonly Color Parchment = new("d8cfbb");
     private static readonly string[,] WorldGridNames =
     {
-        { "Darkwood Reach", "Northwatch Moor", "Ironpine Highlands" },
-        { "Amberfield", "Stonehaven Valley", "Briarfen" },
-        { "Willowmere", "Southroad Plains", "Ashen Quarry" }
+        { "Darkwood Reach", "Northwatch Moor", "Irondeep Mining District" },
+        { "Amberfield", "Stonehaven Valley", "Mirrorwater Lake" },
+        { "Willowmere", "Stonehaven Farmlands", "Creature Testing Grounds" }
     };
 
     private readonly Vector3 _safeSpawn = new(0, 0.08f, 8);
@@ -39,6 +42,7 @@ public partial class StonehavenValley : Node3D
     private readonly Dictionary<string, WorldSkillData> _skills = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WorldPathObstacle> _pathObstacles = [];
     private readonly List<WorldPathObstacle> _constructionPathObstacles = [];
+    private readonly Dictionary<string, Node3D> _worldRegionRoots = new(StringComparer.OrdinalIgnoreCase);
     private WorldPathfinder _pathfinder = null!;
     private ThirdPersonPlayer _player = null!;
     private Label _coordinates = null!;
@@ -99,6 +103,7 @@ public partial class StonehavenValley : Node3D
     private string _counterattackPhase = string.Empty;
     private bool _raidCombatObservedSinceAdvance;
     private bool _stylizedEnvironmentLoaded;
+    private string _loadedRegionCenterCode = string.Empty;
     private Guid? _selectedTargetId;
     private float _settlementDefenseRefreshSeconds;
     private float _resourceMarkerRefreshSeconds;
@@ -162,11 +167,14 @@ public partial class StonehavenValley : Node3D
         }
 
         BuildLightingAndSky();
+        CreateWorldRegionRoots();
         LoadStylizedEnvironment();
         BuildValleyFloor();
         BuildStonehavenVillage();
         BuildOutskirts();
+        BuildRequestedRegionalFeatures();
         BuildExpandedRegions();
+        RefreshLoadedWorldRegions(_requestedSpawn, true);
         _constructionRoot = new Node3D { Name = "PersistentConstruction" };
         AddChild(_constructionRoot);
         BuildWorldPathfinder();
@@ -300,6 +308,7 @@ public partial class StonehavenValley : Node3D
             RefreshActiveResidents();
         }
         var currentGrid = GetWorldGrid(position);
+        RefreshLoadedWorldRegions(position);
         _coordinates.Text = $"GRID {currentGrid.Code}  •  {currentGrid.Name.ToUpperInvariant()}    " +
                             $"X {position.X:0.0}   Y {position.Y:0.0}   Z {position.Z:0.0}";
         _settlementDefenseRefreshSeconds -= (float)delta;
@@ -658,7 +667,7 @@ public partial class StonehavenValley : Node3D
             var node = new HarvestResourceNode { Name = $"Resource-{data.Key}" };
             node.Configure(data);
             _resourceNodes[data.Id] = node;
-            AddChild(node);
+            AddWorldNode(node, data.Position);
         }
         foreach (var removed in _resourceNodes.Keys.Where(id => !received.Contains(id)).ToArray())
         {
@@ -1091,10 +1100,12 @@ public partial class StonehavenValley : Node3D
             item.Key.Equals("raw-timber", StringComparison.OrdinalIgnoreCase))?.Quantity ?? 0;
         var stone = inventory.Items.FirstOrDefault(item =>
             item.Key.Equals("rough-stone", StringComparison.OrdinalIgnoreCase))?.Quantity ?? 0;
+        var iron = inventory.Items.FirstOrDefault(item =>
+            item.Key.Equals("raw-iron-ore", StringComparison.OrdinalIgnoreCase))?.Quantity ?? 0;
         if (IsInstanceValid(_carriedResourcesHudLabel))
         {
             _carriedResourcesHudLabel.Text =
-                $"PACK {inventory.UsedCapacity}/{inventory.CarryCapacity}  •  WOOD {timber}  •  STONE {stone}  •  GOLD {inventory.Gold}";
+                $"PACK {inventory.UsedCapacity}/{inventory.CarryCapacity}  •  WOOD {timber}  •  STONE {stone}  •  IRON {iron}  •  GOLD {inventory.Gold}";
             _carriedResourcesHudLabel.Modulate = inventory.UsedCapacity >= inventory.CarryCapacity
                 ? new Color("f0644c")
                 : new Color("e5bd62");
@@ -1124,9 +1135,12 @@ public partial class StonehavenValley : Node3D
                 item.DefenseBonus > 0 ? $"+{item.DefenseBonus} DEF" : string.Empty,
                 item.HealingAmount > 0 ? $"HEAL {item.HealingAmount}" : string.Empty
             }.Where(value => !string.IsNullOrWhiteSpace(value)));
-            var demand = item.Key is "raw-timber" or "rough-stone"
-                ? "Needed by construction projects • Oren buys surplus"
-                : $"Buyer: {item.BuyerName}";
+            var demand = item.Key switch
+            {
+                "raw-timber" or "rough-stone" => "Needed by construction projects • Oren buys surplus",
+                "raw-iron-ore" => "Brann needs local ore • Oren buys surplus",
+                _ => $"Buyer: {item.BuyerName}"
+            };
             var label = CreateLabel(
                 $"{item.Name} x{item.Quantity}{equipped}   •   WEIGHT {item.TotalWeight}\n" +
                 $"{item.Rarity.ToUpperInvariant()} {item.Kind.ToUpperInvariant()}  {bonuses}   •   {demand}",
@@ -1211,7 +1225,9 @@ public partial class StonehavenValley : Node3D
             $"Darkwood structures: {structures}\n\n" +
             $"STONEHAVEN — HUMAN SETTLEMENT\n" +
             $"Leader: {state.Settlement.Leader.Name}, {state.Settlement.Leader.Title} ({state.Settlement.Leader.Role})   •   health {state.Settlement.Leader.Health}/{state.Settlement.Leader.MaximumHealth}   •   {state.Settlement.Leader.Status}\n" +
-            $"Population: {state.Settlement.LivingResidents} living named residents   •   combat-ready {state.Settlement.CombatReadyResidents}   •   defense rating {state.Settlement.DefenseRating}   •   military power {state.Settlement.GuardStrength}\n\n" +
+            $"Population: {state.Settlement.LivingResidents}/{state.Settlement.HousingCapacity} housed named residents   •   combat-ready {state.Settlement.CombatReadyResidents}   •   defense rating {state.Settlement.DefenseRating}   •   military power {state.Settlement.GuardStrength}\n" +
+            $"Village supplies: food {state.Settlement.Food}   •   wood {state.Settlement.Wood}   •   stone {state.Settlement.Stone}   •   iron {state.Settlement.Iron}\n" +
+            $"Growth: at most one new resident per world day, only when housing and the required food, timber, stone, and iron are available.\n\n" +
             $"NEXT AUTOMATIC WORLD EVENTS\n" +
             $"{darkwoodRaid.Name}: {darkwoodRaid.Current}/{darkwoodRaid.Required}   •   {(darkwoodRaid.Active ? "ACTIVE" : "WAITING")}\n{darkwoodRaid.Explanation}\n" +
             $"{counterattack.Name}: {counterattack.Current}/{counterattack.Required}   •   {(counterattack.Active ? "ACTIVE" : "WAITING")}\n{counterattack.Explanation}" +
@@ -1822,6 +1838,11 @@ public partial class StonehavenValley : Node3D
             8,
             8,
             4,
+            24,
+            64,
+            40,
+            24,
+            4,
             65,
             42,
             new WorldSettlementLeaderData(
@@ -2208,21 +2229,110 @@ public partial class StonehavenValley : Node3D
         }
     }
 
+    private void CreateWorldRegionRoots()
+    {
+        for (var physicalRow = 0; physicalRow < 3; physicalRow++)
+        {
+            for (var physicalColumn = 0; physicalColumn < 3; physicalColumn++)
+            {
+                var code = GetDisplayGridCode(physicalColumn, physicalRow);
+                _worldRegionRoots[code] = new Node3D
+                {
+                    Name = $"Grid{code}-{WorldGridNames[physicalRow, physicalColumn].Replace(' ', '-')}"
+                };
+            }
+        }
+    }
+
+    private void RefreshLoadedWorldRegions(Vector3 position, bool force = false)
+    {
+        var (physicalColumn, physicalRow) = GetPhysicalGridCell(position);
+        var centerCode = GetDisplayGridCode(physicalColumn, physicalRow);
+        if (!force && centerCode.Equals(_loadedRegionCenterCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _loadedRegionCenterCode = centerCode;
+        var desired = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var row = 0; row < 3; row++)
+        {
+            for (var column = 0; column < 3; column++)
+            {
+                if (Math.Abs(column - physicalColumn) + Math.Abs(row - physicalRow) <= 1)
+                {
+                    desired.Add(GetDisplayGridCode(column, row));
+                }
+            }
+        }
+
+        foreach (var (code, root) in _worldRegionRoots)
+        {
+            if (desired.Contains(code))
+            {
+                if (root.GetParent() is null)
+                {
+                    AddChild(root);
+                }
+            }
+            else if (root.GetParent() == this)
+            {
+                RemoveChild(root);
+            }
+        }
+    }
+
+    private void AddWorldNode(Node3D node, Vector3 position)
+    {
+        var code = GetWorldGrid(position).Code;
+        if (_worldRegionRoots.TryGetValue(code, out var root))
+        {
+            root.AddChild(node);
+            return;
+        }
+
+        AddChild(node);
+    }
+
     private void BuildValleyFloor()
     {
-        AddStaticBox("NineGridWorldFloor", new Vector3(0, -0.55f, 0),
-            new Vector3(WorldHalfExtent * 2.0f, 1, WorldHalfExtent * 2.0f), new Color("2b3823"));
+        for (var physicalRow = 0; physicalRow < 3; physicalRow++)
+        {
+            for (var physicalColumn = 0; physicalColumn < 3; physicalColumn++)
+            {
+                var center = new Vector3(
+                    (physicalColumn - 1) * WorldGridSize,
+                    -0.55f,
+                    (physicalRow - 1) * WorldGridSize);
+                var code = GetDisplayGridCode(physicalColumn, physicalRow);
+                AddStaticBox($"Grid{code}Floor", center,
+                    new Vector3(WorldGridSize, 1, WorldGridSize), new Color("2b3823"));
+            }
+        }
 
         if (!_stylizedEnvironmentLoaded)
         {
-            AddDecoration("NorthRoad", new BoxMesh { Size = new Vector3(6.5f, 0.04f, 280) },
-                new Vector3(0, 0.02f, 0), Vector3.Zero, new Color("6b5538"));
-            AddDecoration("WestRoad", new BoxMesh { Size = new Vector3(5.2f, 0.04f, 280) },
-                new Vector3(-WorldGridSize, 0.02f, 0), Vector3.Zero, new Color("624d35"));
-            AddDecoration("EastRoad", new BoxMesh { Size = new Vector3(5.2f, 0.04f, 280) },
-                new Vector3(WorldGridSize, 0.02f, 0), Vector3.Zero, new Color("624d35"));
-            AddDecoration("RealmCrossroad", new BoxMesh { Size = new Vector3(280, 0.04f, 5.2f) },
-                new Vector3(0, 0.018f, 12), Vector3.Zero, new Color("665139"));
+            for (var physicalColumn = 0; physicalColumn < 3; physicalColumn++)
+            {
+                for (var physicalRow = 0; physicalRow < 3; physicalRow++)
+                {
+                    var x = (physicalColumn - 1) * WorldGridSize;
+                    var z = (physicalRow - 1) * WorldGridSize;
+                    AddDecoration($"GridRoad-{physicalColumn}-{physicalRow}",
+                        new BoxMesh { Size = new Vector3(5.2f, 0.04f, WorldGridSize) },
+                        new Vector3(x, 0.02f, z), Vector3.Zero, new Color("624d35"));
+                }
+
+                var crossroadX = (physicalColumn - 1) * WorldGridSize;
+                AddDecoration($"RealmCrossroad-{physicalColumn}",
+                    new BoxMesh { Size = new Vector3(WorldGridSize, 0.04f, 5.2f) },
+                    new Vector3(crossroadX, 0.018f, 12), Vector3.Zero, new Color("665139"));
+                AddDecoration($"River-{physicalColumn}",
+                    new BoxMesh { Size = new Vector3(WorldGridSize, 0.04f, 7.5f) },
+                    new Vector3(crossroadX, 0.035f, 25), Vector3.Zero,
+                    new Color(0.08f, 0.28f, 0.36f, 0.82f), transparency: true);
+            }
+
             AddDecoration("VillageSquare", new CylinderMesh
             {
                 TopRadius = 8.2f,
@@ -2230,19 +2340,24 @@ public partial class StonehavenValley : Node3D
                 Height = 0.05f,
                 RadialSegments = 24
             }, new Vector3(0, 0.025f, -13), Vector3.Zero, new Color("75654b"));
-            AddDecoration("River", new BoxMesh { Size = new Vector3(288, 0.04f, 7.5f) },
-                new Vector3(0, 0.035f, 25), Vector3.Zero,
-                new Color(0.08f, 0.28f, 0.36f, 0.82f), transparency: true);
         }
 
         AddWorldBridge(-WorldGridSize, "West");
         AddWorldBridge(0, "Central");
         AddWorldBridge(WorldGridSize, "East");
 
-        AddBoundaryHill("WestRealmRidge", new Vector3(-145, 5, 0), new Vector3(10, 12, 292));
-        AddBoundaryHill("EastRealmRidge", new Vector3(145, 5, 0), new Vector3(10, 12, 292));
-        AddBoundaryHill("NorthRealmRidge", new Vector3(0, 6, -145), new Vector3(292, 14, 10));
-        AddBoundaryHill("SouthRealmRidge", new Vector3(0, 5, 145), new Vector3(292, 12, 10));
+        for (var index = -1; index <= 1; index++)
+        {
+            var offset = index * WorldGridSize;
+            AddBoundaryHill($"WestRealmRidge-{index}", new Vector3(-145, 5, offset),
+                new Vector3(10, 12, WorldGridSize));
+            AddBoundaryHill($"EastRealmRidge-{index}", new Vector3(145, 5, offset),
+                new Vector3(10, 12, WorldGridSize));
+            AddBoundaryHill($"NorthRealmRidge-{index}", new Vector3(offset, 6, -145),
+                new Vector3(WorldGridSize, 14, 10));
+            AddBoundaryHill($"SouthRealmRidge-{index}", new Vector3(offset, 5, 145),
+                new Vector3(WorldGridSize, 12, 10));
+        }
     }
 
     private void AddWorldBridge(float x, string suffix)
@@ -2338,8 +2453,218 @@ public partial class StonehavenValley : Node3D
             Name = "DarkwoodClanCamp",
             Position = DarkwoodCampCenter
         };
-        AddChild(_darkwoodCamp);
+        AddWorldNode(_darkwoodCamp, DarkwoodCampCenter);
         ApplyDarkwoodCampStage(1);
+    }
+
+    private void BuildRequestedRegionalFeatures()
+    {
+        BuildMirrorwaterLake();
+        BuildIronMiningDistrict();
+        BuildStonehavenFarmlands();
+    }
+
+    private void BuildMirrorwaterLake()
+    {
+        ClearStylizedEnvironmentFootprint(MirrorwaterLakeCenter, new Vector2(39, 32));
+
+        var shore = CreateMesh("MirrorwaterShore", new CylinderMesh
+        {
+            TopRadius = 1,
+            BottomRadius = 1,
+            Height = 0.16f,
+            RadialSegments = 64
+        }, MirrorwaterLakeCenter + new Vector3(0, 0.02f, 0), Vector3.Zero, new Color("655943"));
+        shore.Scale = new Vector3(35, 1, 27);
+        AddWorldNode(shore, MirrorwaterLakeCenter);
+
+        var water = CreateMesh("MirrorwaterLake", new CylinderMesh
+        {
+            TopRadius = 1,
+            BottomRadius = 1,
+            Height = 0.08f,
+            RadialSegments = 64
+        }, MirrorwaterLakeCenter + new Vector3(0, 0.11f, 0), Vector3.Zero,
+            new Color(0.06f, 0.27f, 0.38f, 0.88f), transparency: true, metallic: 0.15f);
+        water.Scale = new Vector3(32, 1, 24);
+        AddWorldNode(water, MirrorwaterLakeCenter);
+
+        // Keep the lake from behaving like solid ground while leaving a clear
+        // channel for the dock on its western bank.
+        AddInvisibleStaticBox("MirrorwaterDeepWater", new Vector3(116, 1.0f, 1),
+            new Vector3(32, 2.0f, 42));
+        AddInvisibleStaticBox("MirrorwaterNorthShallows", new Vector3(84, 1.0f, -13),
+            new Vector3(18, 2.0f, 13));
+        AddInvisibleStaticBox("MirrorwaterSouthShallows", new Vector3(84, 1.0f, 15),
+            new Vector3(18, 2.0f, 13));
+
+        AddFeatureDecoration("LakeRoad", new BoxMesh { Size = new Vector3(26, 0.08f, 4.6f) },
+            new Vector3(58, 0.07f, 12), Vector3.Zero, new Color("70573a"));
+        AddFeatureDecoration("DockApproach", new BoxMesh { Size = new Vector3(4.6f, 0.08f, 13) },
+            new Vector3(70, 0.07f, 6), Vector3.Zero, new Color("70573a"));
+
+        for (var index = 0; index < 14; index++)
+        {
+            var x = 70.0f + index * 2.0f;
+            AddFeatureStaticBox($"MirrorwaterDockPlank{index}", new Vector3(x, 0.38f, 0.5f),
+                new Vector3(1.82f, 0.32f, 5.0f), new Color(index % 2 == 0 ? "76502f" : "684329"));
+        }
+        foreach (var x in new[] { 70.0f, 78.0f, 86.0f, 94.0f })
+        {
+            AddFeatureStaticBox($"MirrorwaterDockPostNorth{x}", new Vector3(x, 0.25f, -2.25f),
+                new Vector3(0.32f, 2.0f, 0.32f), new Color("49301e"));
+            AddFeatureStaticBox($"MirrorwaterDockPostSouth{x}", new Vector3(x, 0.25f, 3.25f),
+                new Vector3(0.32f, 2.0f, 0.32f), new Color("49301e"));
+        }
+
+        AddLabel("MirrorwaterLakeLabel", "A2  •  MIRRORWATER LAKE",
+            MirrorwaterLakeCenter + new Vector3(0, 4.2f, -25), 42, new Color("82c5d3"));
+        AddLabel("MirrorwaterDockLabel", "STONEHAVEN LAKE DOCK",
+            new Vector3(82, 3.0f, 0.5f), 24, Gold);
+        AddLabel("A2RoadSign", "A2  LAKE & DOCK", new Vector3(51, 2.6f, 12), 24, Gold);
+    }
+
+    private void BuildIronMiningDistrict()
+    {
+        ClearStylizedEnvironmentFootprint(IronMineCenter, new Vector2(43, 42));
+
+        AddFeatureDecoration("IrondeepWorkYard", new BoxMesh { Size = new Vector3(62, 0.10f, 58) },
+            IronMineCenter + new Vector3(0, 0.05f, 1), Vector3.Zero, new Color("4b493f"));
+        AddFeatureDecoration("IrondeepRoad", new BoxMesh { Size = new Vector3(5.4f, 0.12f, 78) },
+            new Vector3(104, 0.09f, -82), Vector3.Zero, new Color("66513a"));
+
+        AddFeatureStaticBox("IrondeepCliffLeft", new Vector3(89, 3.4f, -126),
+            new Vector3(26, 6.8f, 8), new Color("3f4140"));
+        AddFeatureStaticBox("IrondeepCliffRight", new Vector3(127, 3.4f, -126),
+            new Vector3(26, 6.8f, 8), new Color("3a3d3c"));
+        AddFeatureStaticBox("IrondeepMineLintel", new Vector3(108, 6.1f, -121.8f),
+            new Vector3(12, 1.2f, 1.0f), new Color("2f302f"));
+        AddFeatureDecoration("IrondeepMineMouth", new BoxMesh { Size = new Vector3(10, 5.0f, 0.3f) },
+            new Vector3(108, 2.6f, -121.4f), Vector3.Zero, new Color("090b0c"));
+
+        foreach (var x in new[] { 103.5f, 112.5f })
+        {
+            AddFeatureStaticBox($"IrondeepSupport{x}", new Vector3(x, 2.5f, -120.8f),
+                new Vector3(0.42f, 5.0f, 0.42f), new Color("5a3821"));
+        }
+        AddFeatureStaticBox("IrondeepSupportBeam", new Vector3(108, 4.8f, -120.8f),
+            new Vector3(10.0f, 0.45f, 0.45f), new Color("5a3821"));
+
+        for (var index = 0; index < 8; index++)
+        {
+            var z = -116.0f + index * 7.5f;
+            AddFeatureDecoration($"IrondeepRailLeft{index}", new BoxMesh { Size = new Vector3(0.16f, 0.08f, 7.0f) },
+                new Vector3(106.5f, 0.16f, z), Vector3.Zero, new Color("343536"), metallic: 0.75f);
+            AddFeatureDecoration($"IrondeepRailRight{index}", new BoxMesh { Size = new Vector3(0.16f, 0.08f, 7.0f) },
+                new Vector3(109.5f, 0.16f, z), Vector3.Zero, new Color("343536"), metallic: 0.75f);
+            AddFeatureDecoration($"IrondeepRailTie{index}", new BoxMesh { Size = new Vector3(4.2f, 0.12f, 0.35f) },
+                new Vector3(108, 0.12f, z), Vector3.Zero, new Color("56361f"));
+        }
+
+        foreach (var orePosition in new[]
+                 {
+                     new Vector3(87, 0.8f, -101), new Vector3(91, 0.6f, -112),
+                     new Vector3(122, 0.9f, -97), new Vector3(128, 0.7f, -110)
+                 })
+        {
+            var ore = CreateMesh("IronOreOutcrop", new SphereMesh
+            {
+                Radius = 1.0f,
+                Height = 2.0f,
+                RadialSegments = 10,
+                Rings = 5
+            }, orePosition, new Vector3(0.1f, orePosition.X * 0.03f, 0.08f),
+                new Color("494743"), metallic: 0.45f);
+            ore.Scale = new Vector3(1.8f, 0.8f, 1.35f);
+            AddWorldNode(ore, orePosition);
+        }
+
+        AddLabel("IrondeepLabel", "A3  •  IRONDEEP QUARRY & MINE",
+            IronMineCenter + new Vector3(0, 7.0f, -19), 40, new Color("c2a36f"));
+        AddLabel("A3RoadSign", "A3  QUARRY & IRON MINE", new Vector3(104, 2.8f, -51), 24, Gold);
+    }
+
+    private void BuildStonehavenFarmlands()
+    {
+        ClearStylizedEnvironmentFootprint(StonehavenFarmlandCenter, new Vector2(45, 45));
+
+        var plotIndex = 0;
+        foreach (var z in new[] { 76.0f, 101.0f })
+        {
+            foreach (var x in new[] { -30.0f, -10.0f, 10.0f, 30.0f })
+            {
+                plotIndex++;
+                var soilColor = plotIndex % 2 == 0 ? new Color("60442d") : new Color("563b28");
+                AddFeatureDecoration($"FarmPlot{plotIndex}", new BoxMesh { Size = new Vector3(16, 0.10f, 19) },
+                    new Vector3(x, 0.08f, z), Vector3.Zero, soilColor);
+                for (var row = -3; row <= 3; row++)
+                {
+                    AddFeatureDecoration($"FarmPlot{plotIndex}CropRow{row}",
+                        new BoxMesh { Size = new Vector3(14.5f, 0.14f, 0.28f) },
+                        new Vector3(x, 0.18f, z + row * 2.15f), Vector3.Zero,
+                        new Color(plotIndex % 3 == 0 ? "6d7e38" : "859447"));
+                }
+            }
+        }
+
+        AddRegionalHouse("WestFarmhouse", new Vector3(-29, 0, 128), new Color("6c563b"));
+        AddRegionalHouse("EastFarmhouse", new Vector3(29, 0, 128), new Color("705239"));
+        AddFeatureDecoration("FarmlandRoad", new BoxMesh { Size = new Vector3(5.2f, 0.08f, 88) },
+            new Vector3(0, 0.08f, 96), Vector3.Zero, new Color("70573a"));
+
+        AddLabel("StonehavenFarmlandLabel", "B1  •  STONEHAVEN FARMLANDS",
+            StonehavenFarmlandCenter + new Vector3(0, 5.0f, -34), 40, new Color("d7be73"));
+        AddLabel("B1RoadSign", "B1  FARMS & HOMESTEADS", new Vector3(0, 2.8f, 51), 24, Gold);
+    }
+
+    private void AddRegionalHouse(string name, Vector3 position, Color wallColor)
+    {
+        AddFeatureStaticBox(name, position + new Vector3(0, 1.55f, 0),
+            new Vector3(7.0f, 3.1f, 6.0f), wallColor);
+        AddFeatureDecoration(name + "Roof", new CylinderMesh
+        {
+            TopRadius = 0,
+            BottomRadius = 5.2f,
+            Height = 2.6f,
+            RadialSegments = 4
+        }, position + new Vector3(0, 4.35f, 0), new Vector3(0, Mathf.DegToRad(45), 0),
+            new Color("4a2019"));
+        AddFeatureDecoration(name + "Door", new BoxMesh { Size = new Vector3(1.35f, 2.25f, 0.12f) },
+            position + new Vector3(0, 1.15f, 3.06f), Vector3.Zero, new Color("2b1b12"));
+        AddFeatureDecoration(name + "WindowLeft", new BoxMesh { Size = new Vector3(1.1f, 0.9f, 0.13f) },
+            position + new Vector3(-2.0f, 1.75f, 3.07f), Vector3.Zero, new Color("d69b3d"));
+        AddFeatureDecoration(name + "WindowRight", new BoxMesh { Size = new Vector3(1.1f, 0.9f, 0.13f) },
+            position + new Vector3(2.0f, 1.75f, 3.07f), Vector3.Zero, new Color("d69b3d"));
+    }
+
+    private void AddFeatureStaticBox(string name, Vector3 position, Vector3 size, Color color)
+    {
+        var body = new StaticBody3D
+        {
+            Name = name,
+            Position = position,
+            CollisionLayer = 1,
+            CollisionMask = 2 | 4 | 8
+        };
+        body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
+        body.AddChild(CreateMesh(name + "Mesh", new BoxMesh { Size = size }, Vector3.Zero, Vector3.Zero, color));
+        AddWorldNode(body, position);
+        if (position.Y + size.Y * 0.5f > 0.9f)
+        {
+            _pathObstacles.Add(WorldPathObstacle.FromBox(position, size));
+        }
+    }
+
+    private void AddFeatureDecoration(
+        string name,
+        Mesh mesh,
+        Vector3 position,
+        Vector3 rotation,
+        Color color,
+        bool transparency = false,
+        float metallic = 0)
+    {
+        AddWorldNode(CreateMesh(name, mesh, position, rotation, color, transparency, metallic), position);
     }
 
     private void BuildExpandedRegions()
@@ -2785,7 +3110,7 @@ public partial class StonehavenValley : Node3D
             CollisionLayer = 1,
             CollisionMask = 2
         };
-        AddChild(body);
+        AddWorldNode(body, position);
         var navigationDiameter = 0.84f * scale;
         _pathObstacles.Add(WorldPathObstacle.FromBox(
             position,
@@ -2905,7 +3230,7 @@ public partial class StonehavenValley : Node3D
             CollisionLayer = 1,
             CollisionMask = 2
         };
-        AddChild(body);
+        AddWorldNode(body, position);
         _pathObstacles.Add(WorldPathObstacle.FromRotatedBox(
             position,
             size * 0.82f,
@@ -2932,9 +3257,22 @@ public partial class StonehavenValley : Node3D
         body.AddChild(mesh);
     }
 
-    private static bool IsInsideReservedConstructionFootprint(Vector3 position) =>
-        MathF.Abs(position.X - StonehavenLumberYardCenter.X) <= StonehavenLumberYardClearance.X &&
-        MathF.Abs(position.Z - StonehavenLumberYardCenter.Y) <= StonehavenLumberYardClearance.Y;
+    private static bool IsInsideReservedConstructionFootprint(Vector3 position)
+    {
+        var insideLumberYard =
+            MathF.Abs(position.X - StonehavenLumberYardCenter.X) <= StonehavenLumberYardClearance.X &&
+            MathF.Abs(position.Z - StonehavenLumberYardCenter.Y) <= StonehavenLumberYardClearance.Y;
+        var lakeX = (position.X - MirrorwaterLakeCenter.X) / 39.0f;
+        var lakeZ = (position.Z - MirrorwaterLakeCenter.Z) / 32.0f;
+        var insideLakeDistrict = lakeX * lakeX + lakeZ * lakeZ <= 1.0f;
+        var insideMineDistrict =
+            MathF.Abs(position.X - IronMineCenter.X) <= 43.0f &&
+            MathF.Abs(position.Z - IronMineCenter.Z) <= 42.0f;
+        var insideFarmland =
+            MathF.Abs(position.X - StonehavenFarmlandCenter.X) <= 45.0f &&
+            MathF.Abs(position.Z - StonehavenFarmlandCenter.Z) <= 45.0f;
+        return insideLumberYard || insideLakeDistrict || insideMineDistrict || insideFarmland;
+    }
 
     private static Label3D CreateNaturalResourceLabel(string text, Vector3 position) => new()
     {
@@ -2964,7 +3302,7 @@ public partial class StonehavenValley : Node3D
             Rings = 6
         }, position + new Vector3(0, size.Y * 0.45f, 0), Vector3.Zero, new Color("33432c"));
         ridge.Scale = new Vector3(size.X * 0.65f, size.Y * 0.75f, size.Z * 0.65f);
-        AddChild(ridge);
+        AddWorldNode(ridge, position);
     }
 
     private void AddWallSegment(Vector3 position, Vector3 size)
@@ -2986,7 +3324,7 @@ public partial class StonehavenValley : Node3D
             CollisionLayer = 1,
             CollisionMask = 2
         };
-        AddChild(body);
+        AddWorldNode(body, position);
         if (position.Y + size.Y * 0.5f > 0.9f)
         {
             _pathObstacles.Add(WorldPathObstacle.FromBox(position, size));
@@ -3007,7 +3345,7 @@ public partial class StonehavenValley : Node3D
             CollisionLayer = 1,
             CollisionMask = 2
         };
-        AddChild(body);
+        AddWorldNode(body, position);
         _pathObstacles.Add(WorldPathObstacle.FromBox(position, size));
         body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
     }
@@ -3022,7 +3360,7 @@ public partial class StonehavenValley : Node3D
             CollisionLayer = 1,
             CollisionMask = 2
         };
-        AddChild(body);
+        AddWorldNode(body, position);
         body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size } });
         if (!_stylizedEnvironmentLoaded)
         {
@@ -3044,7 +3382,7 @@ public partial class StonehavenValley : Node3D
             return;
         }
 
-        AddChild(CreateMesh(name, mesh, position, rotation, color, transparency, metallic));
+        AddWorldNode(CreateMesh(name, mesh, position, rotation, color, transparency, metallic), position);
     }
 
     private static MeshInstance3D CreateMesh(
@@ -3082,7 +3420,7 @@ public partial class StonehavenValley : Node3D
 
     private void AddLabel(string name, string text, Vector3 position, int fontSize, Color color)
     {
-        AddChild(new Label3D
+        AddWorldNode(new Label3D
         {
             Name = name,
             Text = text,
@@ -3093,7 +3431,7 @@ public partial class StonehavenValley : Node3D
             OutlineModulate = new Color(0, 0, 0, 0.9f),
             Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             NoDepthTest = false
-        });
+        }, position);
     }
 
     private void BuildInterface()
@@ -3731,12 +4069,20 @@ public partial class StonehavenValley : Node3D
 
     private static (string Code, string Name) GetWorldGrid(Vector3 position)
     {
-        var physicalColumn = Math.Clamp(Mathf.FloorToInt((position.X + WorldHalfExtent) / WorldGridSize), 0, 2);
-        var physicalRow = Math.Clamp(Mathf.FloorToInt((position.Z + WorldHalfExtent) / WorldGridSize), 0, 2);
+        var (physicalColumn, physicalRow) = GetPhysicalGridCell(position);
+        var code = GetDisplayGridCode(physicalColumn, physicalRow);
+        return (code, WorldGridNames[physicalRow, physicalColumn]);
+    }
+
+    private static (int PhysicalColumn, int PhysicalRow) GetPhysicalGridCell(Vector3 position) => (
+        Math.Clamp(Mathf.FloorToInt((position.X + WorldHalfExtent) / WorldGridSize), 0, 2),
+        Math.Clamp(Mathf.FloorToInt((position.Z + WorldHalfExtent) / WorldGridSize), 0, 2));
+
+    private static string GetDisplayGridCode(int physicalColumn, int physicalRow)
+    {
         var displayColumn = 2 - physicalColumn;
         var displayRow = 2 - physicalRow;
-        var code = $"{(char)('A' + displayColumn)}{displayRow + 1}";
-        return (code, WorldGridNames[physicalRow, physicalColumn]);
+        return $"{(char)('A' + displayColumn)}{displayRow + 1}";
     }
 
     private sealed record NaturalResourceTarget(
@@ -3922,6 +4268,11 @@ public sealed record WorldSettlementData(
     int Population,
     int LivingResidents,
     int CombatReadyResidents,
+    int HousingCapacity,
+    int Food,
+    int Wood,
+    int Stone,
+    int Iron,
     int DefenseRating,
     int GuardStrength,
     WorldSettlementLeaderData Leader);

@@ -462,9 +462,13 @@ public static class DevelopmentEndpoints
         LivingRealmsDbContext database,
         CancellationToken cancellationToken)
     {
-        var itemId = kind == ResourceKind.Wood
-            ? LivingRealmsDbContext.TimberItemId
-            : LivingRealmsDbContext.RoughStoneItemId;
+        var itemId = kind switch
+        {
+            ResourceKind.Wood => LivingRealmsDbContext.TimberItemId,
+            ResourceKind.Stone => LivingRealmsDbContext.RoughStoneItemId,
+            ResourceKind.Iron => LivingRealmsDbContext.RawIronItemId,
+            _ => throw new InvalidOperationException($"{kind} cannot be carried as a gathered resource.")
+        };
         var item = await database.Items.SingleAsync(x => x.Id == itemId, cancellationToken);
         var usedCapacity = await PhaseFiveEndpoints.GetCarriedWeightAsync(character.Id, database, cancellationToken);
         var freeCapacity = Math.Max(0, character.CarryCapacity - usedCapacity);

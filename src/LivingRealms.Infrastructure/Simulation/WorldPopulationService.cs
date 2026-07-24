@@ -8,6 +8,13 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
 {
     public const int StartingStonehavenPopulation = 8;
     public const int StartingDarkwoodPopulation = 7;
+    public const int StonehavenFarmPlotCount = 8;
+    public const int StonehavenFarmhouseCount = 2;
+    public const int StonehavenHousingCapacity = 24;
+    public const int StartingStonehavenFood = 64;
+    public const int StartingStonehavenWood = 40;
+    public const int StartingStonehavenStone = 24;
+    public const int StartingStonehavenIron = 4;
     public const int AutomaticDarkwoodRaidersRequired = 15;
     public const int StonehavenAssaultSoldiersRequired = 20;
 
@@ -32,8 +39,8 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
 
     private static readonly string[] StonehavenRoleCycle =
     [
-        "Stonehaven Guard", "Stonehaven Guard", "Stonehaven Guard", "Stonehaven Guard",
-        "Farmer", "Farmer", "Farmer", "Farmer", "Farmer",
+        "Farmer", "Farmer", "Stonehaven Guard", "Stonehaven Guard", "Stonehaven Guard",
+        "Farmer", "Farmer", "Farmer", "Stonehaven Guard",
         "Carpenter", "Carpenter", "Mason", "Mason", "Hunter", "Hunter", "Weaver", "Weaver",
         "Baker", "Fisher", "Tanner", "Brewer", "Stablehand", "Herbalist", "Scribe", "Potter"
     ];
@@ -211,10 +218,7 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             "Mason" or "Carpenter" or "Farmer" => 95,
             _ => 85
         };
-        var column = index % 15;
-        var row = index / 15;
-        var homeX = -25.0f + column * 3.55f;
-        var homeZ = -31.0f + row * 5.4f;
+        var (homeX, homeZ) = ResolveStonehavenHomePosition(index, role);
         var work = ResolveStonehavenWorkPosition(index, role);
         var safeX = -8.0f + index % 9 * 2.0f;
         var safeZ = -18.0f + index / 9 % 5 * 1.7f;
@@ -253,13 +257,13 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             2 => (-26, -4 - index % 5 * 5),
             _ => (26, -4 - index % 5 * 5)
         },
-        "Farmer" => (-24 + index % 9 * 6, 10 + index / 9 % 3 * 6),
+        "Farmer" => (-30 + index % 4 * 20, 76 + index / 4 % 2 * 25),
         "Carpenter" => (-20 + index % 3 * 2, -18 + index % 2 * 3),
-        "Mason" => (20 + index % 3 * 2, -19 + index % 2 * 3),
+        "Mason" => (86 + index % 3 * 5, -91 + index % 2 * 6),
         "Hunter" => (-35 + index % 5 * 17, 25 + index % 3 * 8),
         "Weaver" => (-15 + index % 4 * 2, -8),
         "Baker" => (8 + index % 3 * 2, -9),
-        "Fisher" => (36 + index % 4 * 3, 8 + index % 5 * 5),
+        "Fisher" => (78 + index % 4 * 4, 1 + index % 3 * 2),
         "Tanner" => (-21 + index % 3 * 2, -26),
         "Brewer" => (13 + index % 3 * 2, -17),
         "Stablehand" => (21 + index % 3 * 2, -27),
@@ -268,6 +272,19 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         "Potter" => (16 + index % 3 * 2, -24),
         _ => (-10 + index % 11 * 2, -12 - index % 5 * 3)
     };
+
+    private static (float X, float Z) ResolveStonehavenHomePosition(int index, string role)
+    {
+        if (role == "Farmer")
+        {
+            var farmhouseX = index % 2 == 0 ? -29.0f : 29.0f;
+            return (farmhouseX + (index % 3 - 1) * 1.2f, 128.0f + (index / 2 % 2) * 1.2f);
+        }
+
+        var column = index % 15;
+        var row = index / 15;
+        return (-25.0f + column * 3.55f, -31.0f + row * 5.4f);
+    }
 
     private static string DialogueFor(string role) => role switch
     {

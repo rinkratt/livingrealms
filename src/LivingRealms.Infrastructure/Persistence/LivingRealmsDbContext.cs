@@ -40,6 +40,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public static readonly Guid ChiefLongbowItemId = Guid.Parse("105a7b69-0e17-40d0-8d0f-4aa63bfb1010");
     public static readonly Guid TimberItemId = Guid.Parse("105a7b69-0e17-40d0-8d0f-4aa63bfb1011");
     public static readonly Guid RoughStoneItemId = Guid.Parse("105a7b69-0e17-40d0-8d0f-4aa63bfb1012");
+    public static readonly Guid RawIronItemId = Guid.Parse("105a7b69-0e17-40d0-8d0f-4aa63bfb1013");
 
     private static readonly DateTimeOffset SeedTime = new(2026, 7, 16, 0, 0, 0, TimeSpan.Zero);
     private static readonly DateTimeOffset PhaseSixSeedTime = new(2026, 7, 17, 14, 30, 0, TimeSpan.Zero);
@@ -150,7 +151,8 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                 CreateItem(ChiefWarbladeItemId, "gorvaks-warblade", "Gorvak's Warblade", "The heavy notched blade carried by the goblin chief.", ItemKind.Weapon, ItemRarity.Rare, EquipmentSlot.Weapon, CharacterArchetype.Vanguard, 14, 0, 0, 180, 9),
                 CreateItem(ChiefLongbowItemId, "gorvaks-warbow", "Gorvak's Warbow", "A captured warbow restrung for Elara's reach.", ItemKind.Weapon, ItemRarity.Rare, EquipmentSlot.Weapon, CharacterArchetype.Ranger, 13, 0, 0, 180, 8),
                 CreateItem(TimberItemId, "raw-timber", "Raw Timber", "Sound timber used by Stonehaven's builders. Construction projects and Oren both need it.", ItemKind.Resource, ItemRarity.Common, null, null, 0, 0, 0, 2, 1),
-                CreateItem(RoughStoneItemId, "rough-stone", "Rough Stone", "Quarried stone used in walls and foundations. Construction projects and Oren both need it.", ItemKind.Resource, ItemRarity.Common, null, null, 0, 0, 0, 3, 2));
+                CreateItem(RoughStoneItemId, "rough-stone", "Rough Stone", "Quarried stone used in walls and foundations. Construction projects and Oren both need it.", ItemKind.Resource, ItemRarity.Common, null, null, 0, 0, 0, 3, 2),
+                CreateItem(RawIronItemId, "raw-iron-ore", "Raw Iron Ore", "Dense ore from Irondeep Mine. Brann and Oren both need dependable local iron.", ItemKind.Resource, ItemRarity.Uncommon, null, null, 0, 0, 0, 7, 3));
         });
         modelBuilder.Entity<Region>(entity =>
         {
@@ -180,10 +182,10 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                 Name = "Stonehaven Village",
                 Population = WorldPopulationService.StartingStonehavenPopulation,
                 StructuralIntegrity = 1000,
-                Food = 420,
-                Wood = 180,
-                Stone = 120,
-                Iron = 35,
+                Food = WorldPopulationService.StartingStonehavenFood,
+                Wood = WorldPopulationService.StartingStonehavenWood,
+                Stone = WorldPopulationService.StartingStonehavenStone,
+                Iron = WorldPopulationService.StartingStonehavenIron,
                 DefenseRating = 65,
                 GuardStrength = 42,
                 IsDestroyed = false,
@@ -290,7 +292,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                     95,
                     false,
                     new(7, 0.08f, -24),
-                    new(36, 0.08f, 30),
+                    new(88, 0.08f, -96),
                     new(4, 0.08f, -15),
                     "Stonehaven's walls begin in the quarry. Give me a strong back and enough daylight."));
         });
@@ -761,11 +763,12 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
             entity.HasData(
                 CreateResourceNode("82000000-0000-4000-8000-000000000001", "stonehaven-oak-west", "Westwood Oak", ResourceKind.Wood, ResourceOwner.Stonehaven, -39, -18, 60, 6, 90),
                 CreateResourceNode("82000000-0000-4000-8000-000000000002", "stonehaven-pine-north", "Northroad Pine", ResourceKind.Wood, ResourceOwner.Stonehaven, -34, 28, 60, 6, 90),
-                CreateResourceNode("82000000-0000-4000-8000-000000000003", "stonehaven-quarry-east", "East Quarry Face", ResourceKind.Stone, ResourceOwner.Stonehaven, 39, 30, 60, 5, 110),
+                CreateResourceNode("82000000-0000-4000-8000-000000000003", "stonehaven-quarry-east", "Irondeep Quarry Face", ResourceKind.Stone, ResourceOwner.Stonehaven, 88, -96, 60, 5, 110),
                 CreateResourceNode("82000000-0000-4000-8000-000000000004", "stonehaven-boulder-south", "Southroad Stone", ResourceKind.Stone, ResourceOwner.Stonehaven, 30, -43, 60, 5, 110),
                 CreateResourceNode("82000000-0000-4000-8000-000000000005", "darkwood-pine", "Darkwood Pine", ResourceKind.Wood, ResourceOwner.Darkwood, -134, -91, 70, 6, 90),
                 CreateResourceNode("82000000-0000-4000-8000-000000000006", "darkwood-deadfall", "Darkwood Deadfall", ResourceKind.Wood, ResourceOwner.Darkwood, -96, -112, 70, 6, 90),
-                CreateResourceNode("82000000-0000-4000-8000-000000000007", "darkwood-stone", "Darkwood Stone Shelf", ResourceKind.Stone, ResourceOwner.Darkwood, -132, -126, 70, 5, 110));
+                CreateResourceNode("82000000-0000-4000-8000-000000000007", "darkwood-stone", "Darkwood Stone Shelf", ResourceKind.Stone, ResourceOwner.Darkwood, -132, -126, 70, 5, 110),
+                CreateResourceNode("82000000-0000-4000-8000-000000000008", "irondeep-ore-vein", "Irondeep Ore Vein", ResourceKind.Iron, ResourceOwner.Stonehaven, 121, -103, 45, 3, 150));
         });
 
         modelBuilder.Entity<ConstructionProject>(entity =>
@@ -838,9 +841,9 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                     Name = "Stonehaven Quarry Works",
                     Owner = ResourceOwner.Stonehaven,
                     SettlementId = StonehavenVillageId,
-                    PositionX = 34,
+                    PositionX = 88,
                     PositionY = 0.08f,
-                    PositionZ = 30,
+                    PositionZ = -91,
                     WoodRequired = 70,
                     StoneRequired = 150,
                     CurrentLevel = 0,

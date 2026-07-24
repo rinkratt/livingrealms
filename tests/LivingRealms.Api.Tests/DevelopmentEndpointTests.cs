@@ -36,7 +36,7 @@ public sealed class DevelopmentEndpointTests : IClassFixture<PhaseTwoWebApplicat
 
         var state = Assert.IsType<DevelopmentStateResponse>(
             await client.GetFromJsonAsync<DevelopmentStateResponse>("/api/v1/development/state", JsonOptions));
-        Assert.Equal(7, state.Nodes.Length);
+        Assert.Equal(8, state.Nodes.Length);
         Assert.Equal(5, state.Projects.Length);
         Assert.Contains(state.Projects, x => x.Key == "stonehaven-curtain-wall" && x.CurrentLevel == 0);
         Assert.Contains(state.Projects, x =>
@@ -44,6 +44,15 @@ public sealed class DevelopmentEndpointTests : IClassFixture<PhaseTwoWebApplicat
             x.CurrentLevel == 0 &&
             x.Position.X == -22.0f &&
             x.Position.Z == -19.5f);
+        Assert.Contains(state.Projects, x =>
+            x.Key == "stonehaven-quarry-works" &&
+            x.Position.X == 88.0f &&
+            x.Position.Z == -91.0f);
+        Assert.Contains(state.Nodes, x =>
+            x.Key == "irondeep-ore-vein" &&
+            x.Kind == "Iron" &&
+            x.Position.X == 121.0f &&
+            x.Position.Z == -103.0f);
 
         var oak = Assert.Single(state.Nodes, x => x.Key == "stonehaven-oak-west");
         var harvestResponse = await client.PostAsJsonAsync(
@@ -151,6 +160,34 @@ public sealed class DevelopmentEndpointTests : IClassFixture<PhaseTwoWebApplicat
             await client.GetFromJsonAsync<InventoryResponse>("/api/v1/inventory", JsonOptions));
         Assert.Equal(16, inventory.UsedCapacity);
         Assert.Equal(2, Assert.Single(inventory.Items, x => x.Key == "raw-timber").Quantity);
+    }
+
+    [Fact]
+    public async Task PlayerCanMinePersistentIronAtIrondeep()
+    {
+        using var client = _factory.CreateClient();
+        var registrationResponse = await client.PostAsJsonAsync(
+            "/api/v1/accounts/register",
+            new Credentials($"miner-{Guid.NewGuid():N}@living-realms.test", "Stonehaven42!"));
+        var registration = Assert.IsType<AuthenticationResponse>(
+            await registrationResponse.Content.ReadFromJsonAsync<AuthenticationResponse>(JsonOptions));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", registration.Token);
+        var alden = Assert.Single(registration.Characters, x => x.Name == "Alden");
+        Assert.Equal(HttpStatusCode.OK,
+            (await client.PostAsync($"/api/v1/characters/{alden.Id:D}/select", null)).StatusCode);
+
+        var state = Assert.IsType<DevelopmentStateResponse>(
+            await client.GetFromJsonAsync<DevelopmentStateResponse>("/api/v1/development/state", JsonOptions));
+        var iron = Assert.Single(state.Nodes, x => x.Key == "irondeep-ore-vein");
+        var response = await client.PostAsJsonAsync(
+            "/api/v1/development/harvest",
+            new HarvestRequest(iron.Id, iron.Position));
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var inventory = Assert.IsType<InventoryResponse>(
+            await client.GetFromJsonAsync<InventoryResponse>("/api/v1/inventory", JsonOptions));
+        var ore = Assert.Single(inventory.Items, x => x.Key == "raw-iron-ore");
+        Assert.Equal(iron.YieldPerHarvest, ore.Quantity);
     }
 
     private sealed record Credentials(string Email, string Password);

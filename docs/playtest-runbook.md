@@ -25,6 +25,22 @@ Use a unique player password rather than a website or server-administrator passw
 2. Confirm the 3D Stonehaven Valley scene opens at that character's restored position.
 3. Walk through the gate and village. Buildings, walls, trees, rocks, the bridge, ridges, player body, and camera all have basic collision.
 
+The world is divided into nine connected 96-by-96-meter regions. The client keeps the
+current region and its directly connected neighbors loaded as the player crosses a
+boundary:
+
+| Region | Current purpose |
+|---|---|
+| A1 | Test Creatures area |
+| A2 | Mirrorwater Lake and dock |
+| A3 | Irondeep Mine and relocated stone quarry |
+| B1 | Eight farm plots and two farmhouses |
+| B2 | Stonehaven |
+| B3 | Eastern wilds |
+| C1 | Western wilds |
+| C2 | Darkwood approach |
+| C3 | Darkwood goblin camp |
+
 Controls:
 
 - **WASD** or **arrow keys** - move
@@ -87,7 +103,7 @@ Position also saves automatically every ten seconds. Closing the window requests
 
 ## Test the living world
 
-1. Press **J** and confirm the panel shows the world day, simulation speed, Darkwood Clan population, resources, structures, Gorvak's leadership, Stonehaven's defenses, scheduled-event counts, and the recent chronicle.
+1. Press **J** and confirm the panel shows the world day, simulation speed, Darkwood Clan population, resources, structures, Gorvak's leadership, Stonehaven's named living population, housing, supplies, defenses, scheduled-event counts, and the recent chronicle.
 2. Use **Advance 24 World Hours**. This control exists only on the development playtest.
 3. Confirm the population and resources increase, Gorvak progresses, a completed scheduled event appears, and a new Central Time chronicle entry is recorded.
 4. Confirm Gorvak's current/max health, attack, and defense rise with his level; level 20 is 468 health, 58 attack, and 38 defense before any later balancing changes.
@@ -95,6 +111,12 @@ Position also saves automatically every ten seconds. Closing the window requests
 6. Close the game for several real minutes, reopen it, log back in, and press **J**. Confirm the world advanced for the elapsed offline time.
 7. Repeatedly advancing the same event or restarting the worker must not apply the same world-time block twice.
 8. To restart the faction test, click **Reset Darkwood World** and then click the confirmation within five seconds. This clears Darkwood progression and chronicle history but keeps player accounts, characters, inventory, equipment, and saved positions.
+
+Stonehaven resets to eight active named residents. It can gain no more than one new
+named resident per world day, and only when housing space and the required food,
+timber, stone, and iron are available. The farms and workers create supplies over
+time; the simulation does not manufacture a hidden population or instantly restore
+the former placeholder count of 84.
 
 ## Test the first Stonehaven raid
 
@@ -111,8 +133,8 @@ If health reaches zero, the character is restored to full health at Stonehaven's
 
 ## Test gathering and construction
 
-1. Walk to a tree or stone deposit with a gold resource label and press **H** while close to it.
-2. Confirm its remaining amount falls and Stonehaven's shared wood or stone total rises. Depleted sites recover after a short real-time delay.
+1. Walk to a tree, stone deposit, or Irondeep ore vein with a gold resource label and press **H** while close to it.
+2. Confirm its remaining amount falls and Stonehaven's matching shared supply rises. Depleted sites recover after a short real-time delay.
 3. Walk to a Stonehaven wall, lumber-yard, or quarry construction marker and press **B**. Confirm only that project's requirements advance.
 4. Continue contributing and confirm visible foundations, framing, wall sections, and completed building pieces appear as the meter advances.
 5. Confirm Nessa travels to the forest, Dain works the quarry, and Skrit and Vrak leave the Darkwood camp to gather for its palisade.
@@ -132,7 +154,7 @@ If health reaches zero, the character is restored to full health at Stonehaven's
 - The player cannot walk through the ground, settlement buildings, walls, trees, large rocks, bridge, or boundary ridges.
 - The HUD displays character identity, level, archetype, health, XP, target health, skill hotkeys, region, coordinates, combat feedback, and save status. The inventory overlay displays equipment, item rarity, quantity, bonuses, and available actions.
 - The Living World panel and northern camp reflect the same persistent faction state. The world advances without a connected player and records durable history.
-- Stonehaven's nine named residents persist on the server, display their role and health, follow their schedules, navigate around village obstacles, and answer nearby R-key interactions.
+- Stonehaven resets with eight active named residents. Every visible population increase creates another named resident with a real role, status, home, and workplace.
 - Every wall and building has an independent, persistent three-tier resource meter and applies real statistical bonuses when a tier completes.
 - Darkwood raids persist on the server, resolve while players are online or offline, retire defeated raid attackers, count player contribution, and apply settlement/resident consequences.
 - Logout revokes the current session token.

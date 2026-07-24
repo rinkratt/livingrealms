@@ -160,6 +160,7 @@ public partial class HarvestResourceNode : StaticBody3D
 
     private void BuildStone()
     {
+        var iron = Kind.Equals("Iron", StringComparison.OrdinalIgnoreCase);
         _collision = new CollisionShape3D
         {
             Shape = new BoxShape3D { Size = new Vector3(2.9f, 1.8f, 2.5f) },
@@ -167,11 +168,13 @@ public partial class HarvestResourceNode : StaticBody3D
         };
         AddChild(_collision);
         AddMesh(new SphereMesh { Radius = 1.0f, Height = 2.0f, RadialSegments = 9, Rings = 5 },
-            new Vector3(0, 0.9f, 0), new Color("595b59"), new Vector3(1.55f, 0.95f, 1.35f));
+            new Vector3(0, 0.9f, 0), new Color(iron ? "454746" : "595b59"),
+            new Vector3(1.55f, 0.95f, 1.35f));
         AddMesh(new SphereMesh { Radius = 0.8f, Height = 1.6f, RadialSegments = 8, Rings = 4 },
-            new Vector3(1.1f, 0.55f, 0.25f), new Color("70716b"), new Vector3(0.9f, 0.75f, 0.8f));
+            new Vector3(1.1f, 0.55f, 0.25f), new Color(iron ? "696a65" : "70716b"),
+            new Vector3(0.9f, 0.75f, 0.8f));
         AddMesh(new BoxMesh { Size = new Vector3(0.12f, 1.0f, 1.1f) },
-            new Vector3(-0.25f, 1.1f, 1.15f), new Color("c4b06d"), Vector3.One);
+            new Vector3(-0.25f, 1.1f, 1.15f), new Color(iron ? "a66f4d" : "c4b06d"), Vector3.One);
     }
 
     private void AddBranch(Vector3 start, Vector3 end, float radius, Color color)
