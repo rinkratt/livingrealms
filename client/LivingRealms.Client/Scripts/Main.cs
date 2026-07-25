@@ -8,7 +8,7 @@ namespace LivingRealms.Client;
 
 public partial class Main : Control
 {
-    private const string ClientVersion = "0.9.4";
+    private const string ClientVersion = "0.9.5";
     private const string UpdateManifestUrl = "https://living-realms.com/downloads/windows-version.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -44,6 +44,7 @@ public partial class Main : Control
     private StonehavenValley? _world;
     private readonly SemaphoreSlim _worldApiGate = new(1, 1);
     private bool _quitting;
+    private bool _isAdministrator;
 
     public override void _Ready()
     {
@@ -521,6 +522,7 @@ public partial class Main : Control
         }
 
         _token = authentication.Token;
+        _isAdministrator = authentication.Account.IsAdministrator;
         _password.Clear();
         _passwordVisibilityButton.ButtonPressed = false;
         _alden = authentication.Characters.FirstOrDefault(character => character.Name == "Alden");
@@ -592,7 +594,8 @@ public partial class Main : Control
             character.Health,
             character.MaximumHealth,
             character.Region,
-            new Vector3(character.Position.X, character.Position.Y, character.Position.Z));
+            new Vector3(character.Position.X, character.Position.Y, character.Position.Z),
+            _isAdministrator);
         world.SaveRequested += OnWorldSaveRequested;
         world.ReturnRequested += OnWorldReturnRequested;
         world.LogoutRequested += OnWorldLogoutRequested;
@@ -1794,6 +1797,7 @@ public partial class Main : Control
     {
         DestroyWorld();
         _token = null;
+        _isAdministrator = false;
         _alden = null;
         _elara = null;
         _selectedCharacter = null;
@@ -1893,6 +1897,7 @@ public partial class Main : Control
     {
         public Guid Id { get; init; }
         public string Email { get; init; } = string.Empty;
+        public bool IsAdministrator { get; init; }
     }
 
     private sealed class CharacterResponse

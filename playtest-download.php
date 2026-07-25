@@ -9,7 +9,7 @@ if ($access === null && !is_admin()) {
     exit;
 }
 
-$packageName = 'LivingRealms-Playtest-Windows-0.9.4.zip';
+$packageName = 'LivingRealms-Playtest-Windows-0.9.5.zip';
 $packagePath = __DIR__ . '/downloads/' . $packageName;
 if (!is_file($packagePath) || !is_readable($packagePath)) {
     http_response_code(503);

@@ -61,6 +61,7 @@ public partial class CombatCreature : CharacterBody3D
     private float _realisticLocomotionBlend;
     private float _motionClock;
     private float _attackAnimationRemaining;
+    private bool _showDetailedOverhead;
     private const float AttackAnimationDuration = 0.62f;
 
     public Guid CreatureId { get; private set; }
@@ -68,6 +69,7 @@ public partial class CombatCreature : CharacterBody3D
     public string SpeciesName { get; private set; } = string.Empty;
     public string CreatureName { get; private set; } = string.Empty;
     public string CreatureRole { get; private set; } = string.Empty;
+    public string CreatureTitle { get; private set; } = string.Empty;
     public int Level { get; private set; }
     public int Health { get; private set; }
     public int MaximumHealth { get; private set; }
@@ -97,6 +99,7 @@ public partial class CombatCreature : CharacterBody3D
         SpeciesName = data.SpeciesName;
         CreatureName = data.Name;
         CreatureRole = data.Role ?? data.Title ?? string.Empty;
+        CreatureTitle = data.Title ?? string.Empty;
         Level = data.Level;
         Health = data.Health;
         MaximumHealth = data.MaximumHealth;
@@ -165,6 +168,7 @@ public partial class CombatCreature : CharacterBody3D
 
     public override void _PhysicsProcess(double delta)
     {
+        UpdateOverheadVisibility();
         if (!IsAlive || !AiEnabled || !IsInstanceValid(_player))
         {
             Velocity = Vector3.Zero;
@@ -769,10 +773,18 @@ public partial class CombatCreature : CharacterBody3D
     public void SetPlayerSelected(bool selected)
     {
         IsPlayerSelected = selected;
-        if (IsInstanceValid(_targetMarker))
+        UpdateOverheadVisibility();
+    }
+
+    public void SetOverheadDetail(bool showDetailed)
+    {
+        _showDetailedOverhead = showDetailed;
+        if (IsInstanceValid(_statusLabel))
         {
-            _targetMarker.Visible = selected && IsAlive;
+            _statusLabel.Text = BuildStatusText();
+            _statusLabel.FontSize = showDetailed ? (IsBoss ? 38 : 30) : (IsBoss ? 34 : 28);
         }
+        UpdateOverheadVisibility();
     }
 
     private void PlayDamagePulse()
@@ -791,9 +803,6 @@ public partial class CombatCreature : CharacterBody3D
         }
 
         _visualRoot.Visible = IsAlive;
-        _statusLabel.Visible = IsAlive;
-        _healthBarLabel.Visible = IsAlive;
-        _targetMarker.Visible = IsAlive && IsPlayerSelected;
         _collider.Disabled = !IsAlive;
         SetPhysicsProcess(IsAlive);
         if (IsAlive)
@@ -805,18 +814,51 @@ public partial class CombatCreature : CharacterBody3D
         {
             Velocity = Vector3.Zero;
         }
+        UpdateOverheadVisibility();
     }
 
     private string BuildStatusText()
     {
         var boss = IsBoss ? "★ " : string.Empty;
+        var identityParts = new[] { CreatureRole, CreatureTitle }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var role = identityParts.Length == 0 ? SpeciesName : string.Join("  •  ", identityParts);
+        if (!_showDetailedOverhead)
+        {
+            return $"{boss}{CreatureName}  •  {role}";
+        }
+
         var activity = string.IsNullOrEmpty(_campDuty) ? string.Empty : $"\n{_campDuty}";
-        var role = string.IsNullOrWhiteSpace(CreatureRole)
+        var detailedRole = string.IsNullOrWhiteSpace(CreatureRole)
             ? SpeciesName.ToUpperInvariant()
             : CreatureRole.ToUpperInvariant();
         return IsBoss
-            ? $"{boss}{CreatureName}  •  Lv {Level}\n{role}  •  HP {Health}/{MaximumHealth}  •  ATK {Attack}  •  DEF {Defense}{activity}"
-            : $"{boss}{CreatureName}  •  Lv {Level}\n{role}  •  HP {Health}/{MaximumHealth}{activity}";
+            ? $"{boss}{CreatureName}  •  Lv {Level}\n{detailedRole}  •  HP {Health}/{MaximumHealth}  •  ATK {Attack}  •  DEF {Defense}{activity}"
+            : $"{boss}{CreatureName}  •  Lv {Level}\n{detailedRole}  •  HP {Health}/{MaximumHealth}{activity}";
+    }
+
+    private void UpdateOverheadVisibility()
+    {
+        if (!IsInstanceValid(_statusLabel) || !IsInstanceValid(_player))
+        {
+            return;
+        }
+
+        var nearby = HorizontalDistance(GlobalPosition, _player.GlobalPosition) <= 28.0f;
+        var visible = IsAlive && (nearby || IsPlayerSelected || _engagedWithPlayer);
+        _statusLabel.Visible = visible;
+        if (IsInstanceValid(_healthBarLabel))
+        {
+            _healthBarLabel.Visible = visible &&
+                                      _showDetailedOverhead &&
+                                      (nearby || IsPlayerSelected || Health < MaximumHealth);
+        }
+        if (IsInstanceValid(_targetMarker))
+        {
+            _targetMarker.Visible = IsAlive && IsPlayerSelected;
+        }
     }
 
     private void UpdateHealthBar()

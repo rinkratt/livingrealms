@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.4
+LIVING REALMS WINDOWS PLAYTEST 0.9.5
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -31,9 +31,26 @@ IMPORTANT CONTROLS
 - I: inventory, capacity, gold, equipment, and buyers
 - R: talk to a nearby resident
 - U: return safely to Stonehaven's north gate if stuck
+- F8: administrators only - show or hide detailed overhead statistics
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.5
+- Restores the five named training creatures to the marked A1 testing grounds.
+- Restores Darkwood's visible starting population when old world data leaves the
+  C3 camp below its intended seven living goblins.
+- Removes the invisible A2 water barriers, prevents the camera from filling the
+  screen with the player model when it is pushed close, and gives the fishing
+  skiff a solid hull.
+- Reconnects the Mirrorwater dock road to the road north of the lake and replaces
+  B1's overlapping road pieces with one continuous farmland road.
+- Nessa now works beside the lumber yard and delivers timber to that project;
+  Dain continues to supply the quarry works.
+- Normal players see concise names and occupations or titles overhead. An
+  administrator can press F8 to toggle full health, combat, skill, and duty data.
+- Creature positions are repaired and bounded before autosave so one invalid
+  creature can no longer cause the entire movement save to be rejected.
 
 BUILD 0.9.4
 - The 3x3 valley is divided into nine connected 96-by-96-meter regions that

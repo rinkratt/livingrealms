@@ -327,7 +327,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                     80,
                     false,
                     new(-7, 0.08f, -23),
-                    new(-36.5f, 0.08f, -18),
+                    new(-27.3f, 0.08f, -19.5f),
                     new(-4, 0.08f, -15),
                     "Every sound timber I bring home becomes a roof, a gate, or one more wall between us and Darkwood.",
                     "Woodcutting",

@@ -34,6 +34,7 @@ public partial class SettlementNpc : CharacterBody3D
     private Vector3 _ambientTargetPosition;
     private float _ambientPauseSeconds;
     private float _resourceWorkCooldown;
+    private bool _showDetailedOverhead;
     private bool _hasAmbientTarget;
     private int _guardPatrolWaypoint;
     private const float AttackAnimationDuration = 0.58f;
@@ -276,6 +277,17 @@ public partial class SettlementNpc : CharacterBody3D
         return $"{ResidentName}, {Role}: \"{Dialogue}\"  •  {Activity}  •  " +
                $"Status: {Status}  •  {importance}  •  {PrimarySkill} level {SkillLevel}  •  " +
                $"Trait: {Trait}  •  Memory: {MemorySummary}";
+    }
+
+    public void SetOverheadDetail(bool showDetailed)
+    {
+        _showDetailedOverhead = showDetailed;
+        if (IsInstanceValid(_statusLabel))
+        {
+            _statusLabel.Text = BuildStatusText();
+            _statusLabel.FontSize = showDetailed ? 27 : 30;
+        }
+        UpdateLabelVisibility();
     }
 
     public void SetRaidCombatTarget(CombatCreature? target)
@@ -544,7 +556,10 @@ public partial class SettlementNpc : CharacterBody3D
         }
         if (IsInstanceValid(_raidMarkerLabel))
         {
-            _raidMarkerLabel.Visible = visible && IsRaidDefender && IsInstanceValid(_raidCombatTarget);
+            _raidMarkerLabel.Visible = visible &&
+                                       _showDetailedOverhead &&
+                                       IsRaidDefender &&
+                                       IsInstanceValid(_raidCombatTarget);
         }
         CollisionLayer = IsAvailable ? 8u : 0u;
         CollisionMask = IsAvailable ? 15u : 0u;
@@ -567,7 +582,9 @@ public partial class SettlementNpc : CharacterBody3D
         }
         if (IsInstanceValid(_healthBarLabel))
         {
-            _healthBarLabel.Visible = present && (nearby || Health < MaximumHealth || IsInstanceValid(_raidCombatTarget));
+            _healthBarLabel.Visible = present &&
+                                      _showDetailedOverhead &&
+                                      (nearby || Health < MaximumHealth || IsInstanceValid(_raidCombatTarget));
         }
     }
 
@@ -589,9 +606,16 @@ public partial class SettlementNpc : CharacterBody3D
                 : new Color("e84d3d");
     }
 
-    private string BuildStatusText() =>
-        $"{ResidentName}  •  {Role}\n{Activity.ToUpperInvariant()}  •  {Status.ToUpperInvariant()}  •  HP {Health}/{MaximumHealth}\n" +
-        $"SKILLS  {string.Join(" • ", Skills.Take(3))}";
+    private string BuildStatusText()
+    {
+        if (!_showDetailedOverhead)
+        {
+            return $"{ResidentName}  •  {Role}";
+        }
+
+        return $"{ResidentName}  •  {Role}\n{Activity.ToUpperInvariant()}  •  {Status.ToUpperInvariant()}  •  HP {Health}/{MaximumHealth}\n" +
+               $"SKILLS  {string.Join(" • ", Skills.Take(3))}";
+    }
 
     private void BuildModel()
     {

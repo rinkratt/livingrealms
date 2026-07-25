@@ -4,7 +4,7 @@ namespace LivingRealms.Client;
 
 public partial class StonehavenValley : Node3D
 {
-    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.4";
+    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.5";
     private const float KnockoutProtectionDuration = 8.0f;
     private const float TargetCycleRadius = 32.0f;
     private const float WorldGridSize = 96.0f;
@@ -19,6 +19,7 @@ public partial class StonehavenValley : Node3D
     private static readonly Vector3 MirrorwaterLakeCenter = new(101.0f, 0, -20.0f);
     private static readonly Vector3 IronMineCenter = new(104.0f, 0, -104.0f);
     private static readonly Vector3 StonehavenFarmlandCenter = new(0, 0, 96.0f);
+    private static readonly Vector3 CreatureTestingGroundsCenter = new(96.0f, 0, 92.0f);
     private static readonly Vector2 StonehavenLumberYardCenter = new(-22.0f, -19.5f);
     private static readonly Vector2 StonehavenLumberYardClearance = new(5.25f, 4.0f);
     private static readonly Color Gold = new("d8a94b");
@@ -95,6 +96,8 @@ public partial class StonehavenValley : Node3D
     private bool _inventoryOpen;
     private bool _worldOpen;
     private bool _mouseReleasedForSharing;
+    private bool _isAdministrator;
+    private bool _showDetailedOverhead;
     private int _campStage;
     private float _resetConfirmationSeconds;
     private float _knockoutProtectionSeconds;
@@ -134,8 +137,10 @@ public partial class StonehavenValley : Node3D
     public Vector3 PlayerPosition => IsInstanceValid(_player) ? _player.GlobalPosition : _requestedSpawn;
 
     public IReadOnlyCollection<WorldCreaturePosition> CreaturePositions => _creatures.Values
-        .Where(creature => creature.IsAlive)
-        .Select(creature => new WorldCreaturePosition(creature.CreatureId, creature.GlobalPosition))
+        .Where(creature => creature.IsAlive && creature.GlobalPosition.IsFinite())
+        .Select(creature => new WorldCreaturePosition(
+            creature.CreatureId,
+            SanitizeCreatureSavePosition(creature.GlobalPosition)))
         .ToArray();
 
     public void Configure(
@@ -146,7 +151,8 @@ public partial class StonehavenValley : Node3D
         int health,
         int maximumHealth,
         string region,
-        Vector3 savedPosition)
+        Vector3 savedPosition,
+        bool isAdministrator)
     {
         _characterName = characterName;
         _archetype = archetype;
@@ -156,6 +162,7 @@ public partial class StonehavenValley : Node3D
         _maximumHealth = maximumHealth;
         _region = region;
         _requestedSpawn = SanitizeSpawn(savedPosition);
+        _isAdministrator = isAdministrator;
         _configured = true;
     }
 
@@ -341,6 +348,19 @@ public partial class StonehavenValley : Node3D
             if (keyEvent.Keycode == Key.F9)
             {
                 OpenFeedbackPortal();
+                GetViewport().SetInputAsHandled();
+                return;
+            }
+
+            if (keyEvent.Keycode == Key.F8 && _isAdministrator)
+            {
+                _showDetailedOverhead = !_showDetailedOverhead;
+                ApplyOverheadLabelDetail();
+                SetSaveStatus(
+                    _showDetailedOverhead
+                        ? "Administrator diagnostics enabled: detailed overhead statistics are visible."
+                        : "Administrator diagnostics hidden: overhead labels show identity and occupation only.",
+                    false);
                 GetViewport().SetInputAsHandled();
                 return;
             }
@@ -559,7 +579,9 @@ public partial class StonehavenValley : Node3D
             .OrderBy(candidate => HorizontalDistance(candidate.GlobalPosition, PlayerPosition))
             .FirstOrDefault();
         var natural = _naturalResourceTargets
-            .Where(candidate => IsInstanceValid(candidate.Body))
+            .Where(candidate =>
+                IsInstanceValid(candidate.Body) &&
+                candidate.Body.IsInsideTree())
             .OrderBy(candidate => HorizontalDistance(candidate.Body.GlobalPosition, PlayerPosition))
             .FirstOrDefault();
         var nodeDistance = node is null
@@ -600,14 +622,15 @@ public partial class StonehavenValley : Node3D
 
     private void UpdateNaturalResourceMarkers()
     {
+        _naturalResourceTargets.RemoveAll(target =>
+            !IsInstanceValid(target.Body) ||
+            !target.Body.IsInsideTree() ||
+            !IsInstanceValid(target.Label) ||
+            !target.Label.IsInsideTree());
         NaturalResourceTarget? nearest = null;
         var nearestDistance = float.MaxValue;
         foreach (var target in _naturalResourceTargets)
         {
-            if (!IsInstanceValid(target.Body) || !IsInstanceValid(target.Label))
-            {
-                continue;
-            }
             var distance = HorizontalDistance(target.Body.GlobalPosition, PlayerPosition);
             target.Label.Visible = distance <= 11.0f;
             if (distance < nearestDistance)
@@ -762,7 +785,11 @@ public partial class StonehavenValley : Node3D
             ? "\nB  DEPOSIT CARRIED MATERIALS"
             : string.Empty;
         var builders = project.Key.Equals("stonehaven-curtain-wall", StringComparison.OrdinalIgnoreCase)
-            ? "\nBUILDERS  NESSA (TIMBER)  •  DAIN (STONE)"
+            ? "\nBUILD CREW  STONEHAVEN MASONS & CARPENTERS"
+            : project.Key.Equals("stonehaven-lumber-yard", StringComparison.OrdinalIgnoreCase)
+                ? "\nFOREWOMAN  NESSA  •  TIMBER CREW"
+                : project.Key.Equals("stonehaven-quarry-works", StringComparison.OrdinalIgnoreCase)
+                    ? "\nFOREMAN  DAIN  •  STONE CREW"
             : project.Key.Equals("darkwood-perimeter-palisade", StringComparison.OrdinalIgnoreCase)
                 ? "\nBUILDERS  SKRIT (TIMBER)  •  VRAK (STONE)"
                 : string.Empty;
@@ -1382,11 +1409,12 @@ public partial class StonehavenValley : Node3D
         var received = new HashSet<Guid>();
         foreach (var data in creatures)
         {
-            var normalizedData = NormalizeDarkwoodLocation(data);
+            var normalizedData = NormalizeCreatureLocation(data);
             received.Add(normalizedData.Id);
             if (_creatures.TryGetValue(normalizedData.Id, out var existing))
             {
                 existing.ApplyServerState(normalizedData, synchronizePosition: synchronizePositions);
+                existing.SetOverheadDetail(_isAdministrator && _showDetailedOverhead);
                 continue;
             }
 
@@ -1395,6 +1423,7 @@ public partial class StonehavenValley : Node3D
             creature.AiEnabled = !_menuOpen && !_inventoryOpen && !_worldOpen;
             creature.PlayerTargetable = _knockoutProtectionSeconds <= 0;
             creature.SetPlayerSelected(_selectedTargetId == normalizedData.Id);
+            creature.SetOverheadDetail(_isAdministrator && _showDetailedOverhead);
             creature.AttackPlayerRequested += OnCreatureAttackRequested;
             creature.RaidCombatPulse += OnRaidCombatPulse;
             creature.ResourceWorkPulse += OnResourceWorkPulse;
@@ -1481,12 +1510,14 @@ public partial class StonehavenValley : Node3D
                 {
                     existing.ApplyData(data, synchronizePositions);
                 }
+                existing.SetOverheadDetail(_isAdministrator && _showDetailedOverhead);
                 continue;
             }
 
             var resident = new SettlementNpc { Name = $"Resident-{data.Name}" };
             resident.Configure(data, _player, _pathfinder);
             resident.AiEnabled = !_menuOpen && !_inventoryOpen && !_worldOpen;
+            resident.SetOverheadDetail(_isAdministrator && _showDetailedOverhead);
             resident.RaidCombatPulse += OnRaidCombatPulse;
             resident.ResourceWorkPulse += OnResourceWorkPulse;
             resident.SettlementDefenseAttackRequested += OnSettlementDefenseAttackRequested;
@@ -1495,6 +1526,19 @@ public partial class StonehavenValley : Node3D
         }
 
         UpdateRaidCombatAssignments();
+    }
+
+    private void ApplyOverheadLabelDetail()
+    {
+        var detailed = _isAdministrator && _showDetailedOverhead;
+        foreach (var resident in _residents.Values)
+        {
+            resident.SetOverheadDetail(detailed);
+        }
+        foreach (var creature in _creatures.Values)
+        {
+            creature.SetOverheadDetail(detailed);
+        }
     }
 
     private void RemoveActiveResident(Guid residentId)
@@ -1782,8 +1826,25 @@ public partial class StonehavenValley : Node3D
         ];
     }
 
-    private static WorldCreatureData NormalizeDarkwoodLocation(WorldCreatureData data)
+    private static WorldCreatureData NormalizeCreatureLocation(WorldCreatureData data)
     {
+        Vector3? trainingSpawn = data.Id switch
+        {
+            var id when id == Guid.Parse("8bd3a92f-80a8-46a6-8349-427975490a01") => new Vector3(76, 0.08f, 68),
+            var id when id == Guid.Parse("8bd3a92f-80a8-46a6-8349-427975490a02") => new Vector3(92, 0.08f, 78),
+            var id when id == Guid.Parse("8bd3a92f-80a8-46a6-8349-427975490a03") => new Vector3(110, 0.08f, 72),
+            var id when id == Guid.Parse("5d8a9637-a327-4f42-8ec3-a292f548d101") => new Vector3(84, 0.08f, 101),
+            var id when id == Guid.Parse("5d8a9637-a327-4f42-8ec3-a292f548d102") => new Vector3(111, 0.08f, 105),
+            _ => null
+        };
+        if (trainingSpawn is not null &&
+            (!data.Position.IsFinite() ||
+             data.Position.X < 50 || data.Position.Z < 50 ||
+             data.Position.X > 139 || data.Position.Z > 139))
+        {
+            return data with { Position = trainingSpawn.Value, SpawnPosition = trainingSpawn.Value };
+        }
+
         if (data.IsRaidAttacker && data.SpawnPosition.Z > -60.0f)
         {
             var spawn = GetDarkwoodRaidSpawn(data.Name);
@@ -2190,30 +2251,48 @@ public partial class StonehavenValley : Node3D
         _stylizedEnvironmentLoaded = true;
     }
 
-    private void ClearStylizedEnvironmentFootprint(Vector3 center, Vector2 halfExtents)
+    private void ClearStylizedEnvironmentFootprint(
+        Vector3 center,
+        Vector2 halfExtents,
+        bool hideLegacyRoads = false)
     {
         if (!IsInstanceValid(_stylizedEnvironmentRoot))
         {
             return;
         }
 
-        HideNatureInsideFootprint(_stylizedEnvironmentRoot!, center, halfExtents);
+        HideEnvironmentFeaturesInsideFootprint(
+            _stylizedEnvironmentRoot!,
+            center,
+            halfExtents,
+            hideLegacyRoads);
     }
 
-    private static void HideNatureInsideFootprint(Node node, Vector3 center, Vector2 halfExtents)
+    private static void HideEnvironmentFeaturesInsideFootprint(
+        Node node,
+        Vector3 center,
+        Vector2 halfExtents,
+        bool hideLegacyRoads)
     {
         foreach (var child in node.GetChildren())
         {
+            var childName = child.Name.ToString();
             if (child is GeometryInstance3D geometry &&
-                IsNatureDecorationName(child.Name.ToString()) &&
+                (IsNatureDecorationName(childName) ||
+                 hideLegacyRoads && IsRoadDecorationName(childName)) &&
                 MathF.Abs(geometry.GlobalPosition.X - center.X) <= halfExtents.X &&
                 MathF.Abs(geometry.GlobalPosition.Z - center.Z) <= halfExtents.Y)
             {
                 geometry.Visible = false;
             }
-            HideNatureInsideFootprint(child, center, halfExtents);
+            HideEnvironmentFeaturesInsideFootprint(child, center, halfExtents, hideLegacyRoads);
         }
     }
+
+    private static bool IsRoadDecorationName(string name) =>
+        name.Contains("Road", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Path", StringComparison.OrdinalIgnoreCase) ||
+        name.Contains("Trail", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsNatureDecorationName(string name) =>
         IsTreeDecorationName(name) ||
@@ -2474,11 +2553,12 @@ public partial class StonehavenValley : Node3D
         BuildMirrorwaterLake();
         BuildIronMiningDistrict();
         BuildStonehavenFarmlands();
+        BuildCreatureTestingGrounds();
     }
 
     private void BuildMirrorwaterLake()
     {
-        ClearStylizedEnvironmentFootprint(MirrorwaterLakeCenter, new Vector2(39, 32));
+        ClearStylizedEnvironmentFootprint(MirrorwaterLakeCenter, new Vector2(39, 32), hideLegacyRoads: true);
 
         var shore = CreateMesh("MirrorwaterShore", new CylinderMesh
         {
@@ -2501,19 +2581,22 @@ public partial class StonehavenValley : Node3D
         water.Scale = new Vector3(32, 1, 24);
         AddWorldNode(water, MirrorwaterLakeCenter);
 
-        // Keep the lake from behaving like solid ground while leaving a clear
-        // channel for the dock on its western bank.
-        AddInvisibleStaticBox("MirrorwaterDeepWater", MirrorwaterLakeCenter + new Vector3(15, 1.0f, 0),
-            new Vector3(32, 2.0f, 42));
-        AddInvisibleStaticBox("MirrorwaterNorthShallows", MirrorwaterLakeCenter + new Vector3(-17, 1.0f, -14),
-            new Vector3(18, 2.0f, 13));
-        AddInvisibleStaticBox("MirrorwaterSouthShallows", MirrorwaterLakeCenter + new Vector3(-17, 1.0f, 14),
-            new Vector3(18, 2.0f, 13));
-
-        AddFeatureDecoration("LakeRoad", new BoxMesh { Size = new Vector3(26, 0.08f, 4.6f) },
-            new Vector3(58, 0.07f, -7), Vector3.Zero, new Color("70573a"));
-        AddFeatureDecoration("DockApproach", new BoxMesh { Size = new Vector3(4.6f, 0.08f, 13) },
-            new Vector3(70, 0.07f, -13.5f), Vector3.Zero, new Color("70573a"));
+        // Water is intentionally non-blocking in this playtest. The previous
+        // invisible deep-water boxes trapped the player and collapsed the
+        // third-person camera against the character's head.
+        AddFeatureRoadPath(
+            "MirrorwaterDockRoad",
+            [
+                new Vector3(68.0f, 0.07f, -20.0f),
+                new Vector3(62.0f, 0.07f, -19.5f),
+                new Vector3(56.0f, 0.07f, -16.0f),
+                new Vector3(51.0f, 0.07f, -11.0f),
+                new Vector3(45.0f, 0.07f, -7.5f),
+                new Vector3(34.0f, 0.07f, -7.0f),
+                new Vector3(27.0f, 0.07f, -7.0f)
+            ],
+            4.6f,
+            new Color("70573a"));
 
         for (var index = 0; index < 14; index++)
         {
@@ -2545,9 +2628,112 @@ public partial class StonehavenValley : Node3D
             RadialSegments = 4
         }, new Vector3(66.5f, 3.6f, -27.0f), new Vector3(0, Mathf.DegToRad(45), 0),
             new Color("45231a"));
-        AddFeatureDecoration("MirrorwaterBoat", new BoxMesh { Size = new Vector3(4.4f, 0.45f, 1.35f) },
-            new Vector3(91.0f, 0.28f, -24.2f), new Vector3(0, 0.20f, -0.08f),
-            new Color("5b3823"));
+        BuildMirrorwaterFishingBoat();
+    }
+
+    private void BuildMirrorwaterFishingBoat()
+    {
+        var center = new Vector3(87.5f, 0.34f, -24.3f);
+        var yaw = Mathf.DegToRad(7.0f);
+        AddFeatureStaticBox(
+            "MirrorwaterFishingSkiffHull",
+            center,
+            new Vector3(4.6f, 0.62f, 1.65f),
+            new Color("4b2d1c"));
+        foreach (var side in new[] { -1.0f, 1.0f })
+        {
+            AddFeatureDecoration(
+                $"MirrorwaterFishingSkiffGunwale{side}",
+                new BoxMesh { Size = new Vector3(4.8f, 0.22f, 0.18f) },
+                center + new Vector3(0, 0.46f, side * 0.78f),
+                new Vector3(0, yaw, side * Mathf.DegToRad(8.0f)),
+                new Color("76502f"));
+        }
+        foreach (var x in new[] { -1.15f, 0.25f, 1.45f })
+        {
+            AddFeatureDecoration(
+                $"MirrorwaterFishingSkiffSeat{x}",
+                new BoxMesh { Size = new Vector3(0.28f, 0.14f, 1.32f) },
+                center + new Vector3(x, 0.58f, 0),
+                new Vector3(0, yaw, 0),
+                new Color("8b6339"));
+        }
+        AddLabel(
+            "MirrorwaterFishingSkiffLabel",
+            "MIRRORWATER FISHING SKIFF",
+            center + new Vector3(0, 2.0f, 0),
+            19,
+            new Color("d7be73"));
+    }
+
+    private void BuildCreatureTestingGrounds()
+    {
+        ClearStylizedEnvironmentFootprint(
+            CreatureTestingGroundsCenter,
+            new Vector2(39, 37),
+            hideLegacyRoads: true);
+
+        var yard = CreateMesh(
+            "CreatureTestingGroundsSurface",
+            new CylinderMesh
+            {
+                TopRadius = 1,
+                BottomRadius = 1,
+                Height = 0.08f,
+                RadialSegments = 64
+            },
+            CreatureTestingGroundsCenter + new Vector3(0, 0.04f, 0),
+            Vector3.Zero,
+            new Color("594831"));
+        yard.Scale = new Vector3(31.0f, 1, 26.0f);
+        AddWorldNode(yard, CreatureTestingGroundsCenter);
+
+        var spawnPositions = new[]
+        {
+            new Vector3(76, 0.10f, 68),
+            new Vector3(92, 0.10f, 78),
+            new Vector3(110, 0.10f, 72),
+            new Vector3(84, 0.10f, 101),
+            new Vector3(111, 0.10f, 105)
+        };
+        for (var index = 0; index < spawnPositions.Length; index++)
+        {
+            AddFeatureDecoration(
+                $"TrainingCreatureSpawn{index + 1}",
+                new CylinderMesh
+                {
+                    TopRadius = 1.55f,
+                    BottomRadius = 1.55f,
+                    Height = 0.06f,
+                    RadialSegments = 24
+                },
+                spawnPositions[index],
+                Vector3.Zero,
+                index < 3 ? new Color("79623c") : new Color("6b5435"));
+        }
+
+        AddFeatureRoadPath(
+            "CreatureGroundsRoad",
+            [
+                new Vector3(96, 0.08f, 49),
+                new Vector3(96.8f, 0.08f, 61),
+                new Vector3(95.5f, 0.08f, 73),
+                new Vector3(96, 0.08f, 88)
+            ],
+            4.4f,
+            new Color("70573a"));
+        AddLabel(
+            "CreatureTestingGroundsLabel",
+            "A1  •  CREATURE TESTING GROUNDS",
+            CreatureTestingGroundsCenter + new Vector3(0, 5.0f, -27.0f),
+            40,
+            new Color("d7be73"));
+        AddLabel(
+            "CreatureTestingGroundsInstruction",
+            "TRAINING CREATURES RESPAWN INSIDE THE MARKED YARD",
+            CreatureTestingGroundsCenter + new Vector3(0, 3.2f, -23.5f),
+            21,
+            Parchment);
     }
 
     private void BuildIronMiningDistrict()
@@ -2715,12 +2901,15 @@ public partial class StonehavenValley : Node3D
 
     private void BuildStonehavenFarmlands()
     {
-        ClearStylizedEnvironmentFootprint(StonehavenFarmlandCenter, new Vector2(45, 45));
+        ClearStylizedEnvironmentFootprint(
+            StonehavenFarmlandCenter,
+            new Vector2(45, 45),
+            hideLegacyRoads: true);
 
         var plotIndex = 0;
         foreach (var z in new[] { 76.0f, 101.0f })
         {
-            foreach (var x in new[] { -30.0f, -10.0f, 10.0f, 30.0f })
+            foreach (var x in new[] { -30.0f, -11.0f, 11.0f, 30.0f })
             {
                 plotIndex++;
                 var soilColor = plotIndex % 2 == 0 ? new Color("60442d") : new Color("563b28");
@@ -2738,8 +2927,29 @@ public partial class StonehavenValley : Node3D
 
         AddRegionalHouse("WestFarmhouse", new Vector3(-29, 0, 128), new Color("6c563b"), Vector3.Right);
         AddRegionalHouse("EastFarmhouse", new Vector3(29, 0, 128), new Color("705239"), Vector3.Left);
-        AddFeatureDecoration("FarmlandRoad", new BoxMesh { Size = new Vector3(5.2f, 0.08f, 88) },
-            new Vector3(0, 0.08f, 96), Vector3.Zero, new Color("70573a"));
+        AddFeatureRoadPath(
+            "FarmlandRoad",
+            [
+                new Vector3(0, 0.08f, 31),
+                new Vector3(0.8f, 0.08f, 49),
+                new Vector3(-0.7f, 0.08f, 68),
+                new Vector3(0.6f, 0.08f, 88),
+                new Vector3(-0.8f, 0.08f, 108),
+                new Vector3(0, 0.08f, 126),
+                new Vector3(0, 0.08f, 141)
+            ],
+            5.0f,
+            new Color("70573a"));
+        AddFeatureRoadPath(
+            "WestFarmhouseLane",
+            [new Vector3(0, 0.075f, 124), new Vector3(-13, 0.075f, 125), new Vector3(-25, 0.075f, 128)],
+            3.2f,
+            new Color("675036"));
+        AddFeatureRoadPath(
+            "EastFarmhouseLane",
+            [new Vector3(0, 0.075f, 124), new Vector3(13, 0.075f, 125), new Vector3(25, 0.075f, 128)],
+            3.2f,
+            new Color("675036"));
 
         AddLabel("StonehavenFarmlandLabel", "B1  •  STONEHAVEN FARMLANDS",
             StonehavenFarmlandCenter + new Vector3(0, 5.0f, -34), 40, new Color("d7be73"));
@@ -2807,6 +3017,35 @@ public partial class StonehavenValley : Node3D
         float metallic = 0)
     {
         AddWorldNode(CreateMesh(name, mesh, position, rotation, color, transparency, metallic), position);
+    }
+
+    private void AddFeatureRoadPath(
+        string name,
+        IReadOnlyList<Vector3> points,
+        float width,
+        Color color)
+    {
+        for (var index = 0; index < points.Count - 1; index++)
+        {
+            var start = points[index];
+            var end = points[index + 1];
+            var direction = end - start;
+            direction.Y = 0;
+            var length = direction.Length();
+            if (length <= 0.01f)
+            {
+                continue;
+            }
+
+            var midpoint = (start + end) * 0.5f;
+            midpoint.Y = MathF.Max(start.Y, end.Y);
+            AddFeatureDecoration(
+                $"{name}Segment{index + 1}",
+                new BoxMesh { Size = new Vector3(width, 0.08f, length + 0.65f) },
+                midpoint,
+                new Vector3(0, Mathf.Atan2(direction.X, direction.Z), 0),
+                index % 2 == 0 ? color : color.Lightened(0.025f));
+        }
     }
 
     private void BuildExpandedRegions()
@@ -3693,7 +3932,13 @@ public partial class StonehavenValley : Node3D
         root.AddChild(helpPanel);
         var helpMargin = CreateMargin(12, 8, 12, 8);
         helpPanel.AddChild(helpMargin);
-        var helpText = CreateLabel("WASD / ARROWS  Move     MOUSE  Look     SCROLL  Zoom     SHIFT  Sprint     SPACE  Jump     U  Unstuck\nLEFT CLICK / F  Attack     H  Chop / Mine     B  Deposit Materials     R  Talk     TAB  Targets     I  Inventory     J  Living World     F10  Release Mouse     F12  Screenshot     ESC  Menu", 14, Parchment);
+        var adminHelp = _isAdministrator ? "     F8  Admin Labels" : string.Empty;
+        var helpText = CreateLabel(
+            "WASD / ARROWS  Move     MOUSE  Look     SCROLL  Zoom     SHIFT  Sprint     SPACE  Jump     U  Unstuck\n" +
+            "LEFT CLICK / F  Attack     H  Chop / Mine     B  Deposit Materials     R  Talk     TAB  Targets     " +
+            $"I  Inventory     J  Living World{adminHelp}     F10  Release Mouse     F12  Screenshot     ESC  Menu",
+            14,
+            Parchment);
         helpText.VerticalAlignment = VerticalAlignment.Center;
         helpMargin.AddChild(helpText);
 
@@ -4207,6 +4452,19 @@ public partial class StonehavenValley : Node3D
         }
 
         return new Vector3(savedPosition.X, Mathf.Max(savedPosition.Y, 0.08f), savedPosition.Z);
+    }
+
+    private static Vector3 SanitizeCreatureSavePosition(Vector3 position)
+    {
+        if (!position.IsFinite())
+        {
+            return Vector3.Zero;
+        }
+
+        return new Vector3(
+            Mathf.Clamp(position.X, -139.0f, 139.0f),
+            Mathf.Clamp(position.Y, 0.08f, 18.0f),
+            Mathf.Clamp(position.Z, -139.0f, 139.0f));
     }
 
     private static (string Code, string Name) GetWorldGrid(Vector3 position)

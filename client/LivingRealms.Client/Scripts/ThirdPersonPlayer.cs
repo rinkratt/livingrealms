@@ -208,6 +208,12 @@ public partial class ThirdPersonPlayer : CharacterBody3D
                 _springArm.SpringLength,
                 Mathf.Max(MinimumCameraDistance, groundSafeDistance),
                 9.0f * seconds);
+            if (IsInstanceValid(_visualRoot))
+            {
+                // When a real wall compresses the camera, hide the local model
+                // before the camera moves inside the character's head.
+                _visualRoot.Visible = _springArm.GetHitLength() >= 1.2f;
+            }
         }
         _attackCooldown = Mathf.Max(0, _attackCooldown - seconds);
         _attackAnimationRemaining = Mathf.Max(0, _attackAnimationRemaining - seconds);

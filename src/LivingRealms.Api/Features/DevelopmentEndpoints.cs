@@ -272,11 +272,8 @@ public static class DevelopmentEndpoints
             return Results.Conflict(new ErrorResponse($"{node.Name} is waiting to recover."));
         }
 
-        var projectId = worker.Value.Owner == ResourceOwner.Stonehaven
-            ? LivingRealmsDbContext.StonehavenWallProjectId
-            : LivingRealmsDbContext.DarkwoodPalisadeProjectId;
         var project = await database.ConstructionProjects
-            .SingleAsync(x => x.Id == projectId, context.RequestAborted);
+            .SingleAsync(x => x.Id == worker.Value.ProjectId, context.RequestAborted);
         var needed = node.Kind == ResourceKind.Wood
             ? Math.Max(0, project.WoodRequired - project.WoodContributed)
             : Math.Max(0, project.StoneRequired - project.StoneContributed);
@@ -314,10 +311,26 @@ public static class DevelopmentEndpoints
 
     private static WorkerAssignment? ResolveWorker(string workerKey) => workerKey.Trim().ToLowerInvariant() switch
     {
-        "nessa" => new("Nessa", ResourceOwner.Stonehaven, ResourceKind.Wood),
-        "dain" => new("Dain", ResourceOwner.Stonehaven, ResourceKind.Stone),
-        "skrit" => new("Skrit", ResourceOwner.Darkwood, ResourceKind.Wood),
-        "vrak" => new("Vrak", ResourceOwner.Darkwood, ResourceKind.Stone),
+        "nessa" => new(
+            "Nessa",
+            ResourceOwner.Stonehaven,
+            ResourceKind.Wood,
+            LivingRealmsDbContext.StonehavenLumberYardProjectId),
+        "dain" => new(
+            "Dain",
+            ResourceOwner.Stonehaven,
+            ResourceKind.Stone,
+            LivingRealmsDbContext.StonehavenQuarryWorksProjectId),
+        "skrit" => new(
+            "Skrit",
+            ResourceOwner.Darkwood,
+            ResourceKind.Wood,
+            LivingRealmsDbContext.DarkwoodPalisadeProjectId),
+        "vrak" => new(
+            "Vrak",
+            ResourceOwner.Darkwood,
+            ResourceKind.Stone,
+            LivingRealmsDbContext.DarkwoodPalisadeProjectId),
         _ => null
     };
 
@@ -652,7 +665,11 @@ public static class DevelopmentEndpoints
         return MathF.Sqrt(x * x + y * y + z * z);
     }
 
-    private readonly record struct WorkerAssignment(string DisplayName, ResourceOwner Owner, ResourceKind Kind);
+    private readonly record struct WorkerAssignment(
+        string DisplayName,
+        ResourceOwner Owner,
+        ResourceKind Kind,
+        Guid ProjectId);
     private sealed record ErrorResponse(string Error);
     public sealed record PositionRequest(float X, float Y, float Z);
     public sealed record HarvestRequest(Guid NodeId, PositionRequest PlayerPosition);
