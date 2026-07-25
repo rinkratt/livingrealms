@@ -54,7 +54,8 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             "/api/v1/regions/stonehaven-valley/residents",
             JsonOptions);
         Assert.NotNull(residents);
-        Assert.Contains(residents, x => x.Name == "Captain Rowan" && x.Activity == "Defending Stonehaven");
+        Assert.Contains(residents, x => x.Name == "Mira" && x.Activity == "Defending Stonehaven");
+        Assert.Contains(residents, x => x.Name == "Reeve Aldric Vale" && x.Activity == "Coordinating Stonehaven's defense");
         Assert.Contains(residents, x => x.Name == "Brann" && x.Activity == "Holding the reserve line");
         Assert.Contains(residents, x => x.Name == "Elowen" && x.Activity == "Tending wounded defenders");
         Assert.Contains(residents, x => x.Name == "Oren" && x.Activity == "Securing emergency supplies");
@@ -85,7 +86,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         var frontLine = await database.SettlementResidents
             .Where(x => x.Role.Contains("Guard"))
             .ToListAsync();
-        Assert.Equal(3, frontLine.Count(guard => guard.Health < guard.MaximumHealth));
+        Assert.Equal(2, frontLine.Count(guard => guard.Health < guard.MaximumHealth));
         var blacksmith = await database.SettlementResidents.SingleAsync(x => x.Role == "Blacksmith");
         Assert.Equal(blacksmith.MaximumHealth, blacksmith.Health);
         var raidAfterOneRound = await database.SettlementRaids.SingleAsync();
@@ -97,7 +98,9 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             raidAfterOneRound.AttackerStrength);
         Assert.Equal(
             await database.SettlementResidents
-                .Where(x => x.CanFight && x.Health > 0 && x.Status != ResidentStatus.Dead)
+                .Where(x => x.CanFight &&
+                            x.Health > 0 &&
+                            (x.Status == ResidentStatus.Active || x.Status == ResidentStatus.Injured))
                 .SumAsync(x => x.Health),
             raidAfterOneRound.DefenderStrength);
     }
@@ -132,7 +135,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         using (var scope = _factory.Services.CreateScope())
         {
             var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
-            var captain = await database.SettlementResidents.SingleAsync(x => x.Name == "Captain Rowan");
+            var captain = await database.SettlementResidents.SingleAsync(x => x.Name == "Mira");
             captain.Health = Math.Max(1, captain.MaximumHealth / 3);
             captain.Status = ResidentStatus.Injured;
             await database.SaveChangesAsync();
@@ -143,8 +146,8 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             JsonOptions);
 
         Assert.NotNull(residents);
-        Assert.Contains(residents, x => x.Name == "Captain Rowan" && x.Activity == "Defending Stonehaven");
-        Assert.Contains(residents, x => x.Name == "Mara" && x.Activity == "Missing");
+        Assert.Contains(residents, x => x.Name == "Mira" && x.Activity == "Defending Stonehaven");
+        Assert.Contains(residents, x => x.Name == "Mara Venn" && x.Activity == "Missing");
     }
 
     [Fact]
@@ -158,7 +161,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
 
         using var scope = _factory.Services.CreateScope();
         var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
-        var captain = await database.SettlementResidents.SingleAsync(x => x.Name == "Captain Rowan");
+        var captain = await database.SettlementResidents.SingleAsync(x => x.Name == "Mira");
         captain.Health = 50;
         captain.Status = ResidentStatus.Injured;
         var attackers = await database.SettlementRaidAttackers.Include(x => x.Creature).ToListAsync();
@@ -172,7 +175,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         await simulation.AdvanceActiveRaidAsync(DateTimeOffset.UtcNow.AddMinutes(1), 1, true);
         database.ChangeTracker.Clear();
 
-        captain = await database.SettlementResidents.SingleAsync(x => x.Name == "Captain Rowan");
+        captain = await database.SettlementResidents.SingleAsync(x => x.Name == "Mira");
         Assert.Equal(42, captain.Health);
         Assert.Equal(ResidentStatus.Injured, captain.Status);
     }
@@ -314,13 +317,18 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         var raid = await database.SettlementRaids.SingleAsync();
         Assert.Equal(SettlementRaidStatus.AttackersWon, raid.Status);
         Assert.Equal(240, raid.SettlementDamage);
-        Assert.Equal(5, raid.ResidentCasualties);
+        Assert.Equal(4, raid.ResidentCasualties);
         Assert.True(raid.ResidentInjuries >= 1);
         var settlement = await database.Settlements.SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
         Assert.Equal(760, settlement.StructuralIntegrity);
-        Assert.Equal(3, settlement.Population);
+        Assert.Equal(4, settlement.Population);
         var residents = await database.SettlementResidents.ToListAsync();
-        Assert.All(residents.Where(x => x.CanFight), x => Assert.Equal(ResidentStatus.Dead, x.Status));
+        Assert.All(
+            residents.Where(x => x.CanFight && x.Name != "Mara Venn"),
+            x => Assert.Equal(ResidentStatus.Dead, x.Status));
+        Assert.Equal(
+            ResidentStatus.Missing,
+            Assert.Single(residents, x => x.Name == "Mara Venn").Status);
         Assert.Single(residents, x => !x.CanFight && x.Status == ResidentStatus.Dead);
         Assert.Contains(await database.WorldHistory.ToListAsync(), x => x.EventType == "stonehaven_raid_lost");
 

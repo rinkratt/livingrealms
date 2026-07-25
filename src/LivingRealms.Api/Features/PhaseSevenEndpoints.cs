@@ -76,6 +76,12 @@ public static class PhaseSevenEndpoints
                 resident.Status.ToString(),
                 resident.CanFight || isAssaultMember,
                 SkillsFor(resident.Role),
+                resident.PrimarySkill,
+                resident.SkillLevel,
+                resident.Trait,
+                resident.Experience,
+                resident.IsMajor,
+                resident.MemorySummary,
                 schedule.Activity,
                 schedule.Position,
                 ToPosition(resident.HomeX, resident.HomeY, resident.HomeZ),
@@ -124,8 +130,10 @@ public static class PhaseSevenEndpoints
         {
             return resident.Role switch
             {
-                "Guard Captain" or "Stonehaven Guard" =>
+                "Guard Captain" or "Stonehaven Guard" or "Militia Recruit" =>
                     new("Defending Stonehaven", ToPosition(resident.WorkX, resident.WorkY, resident.WorkZ)),
+                "Reeve of Stonehaven" =>
+                    new("Coordinating Stonehaven's defense", ToPosition(resident.SafeX, resident.SafeY, resident.SafeZ)),
                 "Blacksmith" =>
                     new("Holding the reserve line", ToPosition(resident.WorkX, resident.WorkY, resident.WorkZ)),
                 "Healer" =>
@@ -205,7 +213,9 @@ public static class PhaseSevenEndpoints
     private static IReadOnlyCollection<string> SkillsFor(string role) => role switch
     {
         "Guard Captain" => ["Command", "Swordsmanship", "Shield Defense", "Tactics"],
+        "Reeve of Stonehaven" => ["Administration", "Diplomacy", "Provisioning", "Law"],
         "Stonehaven Guard" => ["Swordsmanship", "Shield Defense", "Patrol"],
+        "Militia Recruit" => ["Swordsmanship", "Shield Defense", "Local Knowledge"],
         "Blacksmith" => ["Blacksmithing", "Weapon Repair", "Reserve Defense"],
         "Innkeeper" => ["Hospitality", "Cooking", "Rumorcraft"],
         "Healer" => ["Medicine", "Herbalism", "Triage"],
@@ -261,6 +271,12 @@ public static class PhaseSevenEndpoints
         string Status,
         bool CanFight,
         IReadOnlyCollection<string> Skills,
+        string PrimarySkill,
+        int SkillLevel,
+        string Trait,
+        long Experience,
+        bool IsMajor,
+        string MemorySummary,
         string Activity,
         PositionResponse Position,
         PositionResponse HomePosition,

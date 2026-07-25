@@ -74,7 +74,7 @@ Position also saves automatically every ten seconds. Closing the window requests
 ## Test Stonehaven residents
 
 1. Enter Stonehaven and confirm eight named residents appear with their role, current activity, and health above them.
-2. Find Captain Rowan, guards Mira and Tomas, Brann, Mara, Elowen, Oren, and Nessa around the gate and village buildings.
+2. Find Reeve Aldric Vale, Guard Captain Mira, guard Tomas, Brann, Elowen, Oren, Nessa, and Dain around the gate and village buildings. Mara Venn should appear in the roster as missing, not as a visible innkeeper.
 3. Stand within a few steps of a resident and press **R**. Confirm that resident's name, role, dialogue, and current activity appear in the HUD message area.
 4. Press **R** when nobody is nearby and confirm the client tells you to move closer.
 5. Press **J**, advance the world clock, close the panel, and allow up to 15 seconds for a roster refresh. Confirm guards patrol or guard the gate and workers move between work and home according to the world hour.
@@ -87,8 +87,8 @@ Position also saves automatically every ten seconds. Closing the window requests
 3. Let a creature detect and chase you. Confirm that it stops at attack distance and reduces player health.
 4. Put a wall, well, rock, or village structure between you and a pursuing creature. Confirm that it does not attack through the obstacle, immediately commits to one waypoint route around it, leaves enough room for its full body, continues toward you through an opening, drops the recovery route as soon as direct pursuit is possible, and rejects a route whenever its distance to the waypoint stops improving—even if collision sliding is still moving its body.
 5. Defeat the creature. Confirm that the HUD reports the XP award and updates the XP bar.
-6. Wait for the encounter to respawn, or leave and return after its respawn time.
-7. Approach stronger Prairie Wolves and Goblin Raiders only after verifying the basic rat fight. Gorvak the Goblin Chief is the boss encounter.
+6. Wait for an ordinary wildlife or test encounter to respawn, or leave and return after its respawn time.
+7. Approach stronger Prairie Wolves and factionless test Goblin Raiders only after verifying the basic rat fight. Named Darkwood clan members do not respawn after permanent defeat. If the current Darkwood leader falls, inspect **J** to confirm a named successor and Chronicle entry.
 
 ## Test loot, equipment, and skills
 
@@ -103,10 +103,10 @@ Position also saves automatically every ten seconds. Closing the window requests
 
 ## Test the living world
 
-1. Press **J** and confirm the panel shows the world day, simulation speed, Darkwood Clan population, resources, structures, Gorvak's leadership, Stonehaven's named living population, housing, supplies, defenses, scheduled-event counts, and the recent chronicle.
+1. Press **J** and confirm the panel shows the world day, real-time simulation speed, Darkwood Clan population, resources, structures, the current leader, Stonehaven's named living population, housing, supplies, defenses, Reeve Aldric Vale's leadership profile, scheduled-event counts, and the recent chronicle.
 2. Use **Advance 24 World Hours**. This control exists only on the development playtest.
-3. Confirm the population and resources increase, Gorvak progresses, a completed scheduled event appears, and a new Central Time chronicle entry is recorded.
-4. Confirm Gorvak's current/max health, attack, and defense rise with his level; level 20 is 468 health, 58 attack, and 38 defense before any later balancing changes.
+3. Confirm population and resources change, the current Darkwood leader progresses, construction consumes the displayed timber and stone, a completed scheduled event appears, and a new Central Time chronicle entry is recorded.
+4. Confirm the current Darkwood leader's health, attack, and defense rise with level.
 5. Close the panel and travel north beyond Stonehaven. Confirm the visible Darkwood camp matches the stage named in the panel and that each advanced structure has a purpose label.
 6. Close the game for several real minutes, reopen it, log back in, and press **J**. Confirm the world advanced for the elapsed offline time.
 7. Repeatedly advancing the same event or restarting the worker must not apply the same world-time block twice.

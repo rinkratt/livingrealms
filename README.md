@@ -2,7 +2,7 @@
 
 Living Realms is a persistent medieval-fantasy online world where creatures learn, factions expand, settlements change, and history continues while players are offline.
 
-This repository contains the promotional website plus the account, combat, living-world, NPC, raid, visual, and settlement-development vertical slices. Players can register or log in through the Godot client, select Alden or Elara, explore Stonehaven Valley in third person, meet named residents, fight persistent creatures, gather renewable wood and stone, contribute shared resources to independent three-tier construction projects, and help Stonehaven's guards repel persistent Darkwood raids.
+This repository contains the promotional website plus the account, combat, living-world, NPC, raid, visual, and settlement-development vertical slices. Players can register or log in through the Godot client, select Alden or Elara, explore Stonehaven Valley in third person, meet named residents with persistent skills, traits, experience, importance, and memories, fight persistent creatures and faction members, gather renewable resources, contribute real stored supplies to independent three-tier construction projects, and help Stonehaven's guards repel persistent Darkwood raids. Named faction members remain dead after permanent defeat; a surviving member succeeds a fallen leader and the change is recorded in the Chronicle.
 
 ## Repository structure
 
@@ -175,7 +175,7 @@ Endpoints:
 dotnet run --project src/LivingRealms.Worker/LivingRealms.Worker.csproj
 ```
 
-The Phase 6 worker calculates elapsed real time, queues idempotent scheduled events, advances faction state, heals or respawns inactive creatures, records world history, and recovers interrupted events after a restart. The playtest runs at one world hour per real minute and caps a single offline catch-up at seven world days.
+The world worker calculates elapsed real time, queues idempotent scheduled events, advances faction state, heals ordinary renewable encounters, records world history, and recovers interrupted events after a restart. The playtest runs in real time—one real minute equals one world minute—and caps a single offline catch-up at seven world days. Named faction members do not use the renewable encounter respawn loop.
 
 ## Run the Discord AI bot
 

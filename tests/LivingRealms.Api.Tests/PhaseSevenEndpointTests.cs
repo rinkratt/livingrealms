@@ -49,8 +49,15 @@ public sealed class PhaseSevenEndpointTests : IClassFixture<PhaseTwoWebApplicati
         Assert.Equal(9, residents.Length);
         Assert.Equal(9, residents.Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
         Assert.Equal(8, residents.Count(x => x.Status == "Active"));
-        Assert.Contains(residents, x => x.Name == "Mara" && x.Status == "Missing");
-        Assert.Contains(residents, x => x.Name == "Captain Rowan" && x.Role == "Guard Captain" && x.CanFight);
+        Assert.Contains(residents, x => x.Name == "Mara Venn" && x.Status == "Missing");
+        Assert.Contains(residents, x =>
+            x.Name == "Reeve Aldric Vale" &&
+            x.Role == "Reeve of Stonehaven" &&
+            !x.CanFight &&
+            x.PrimarySkill == "Administration" &&
+            x.SkillLevel == 5 &&
+            x.IsMajor);
+        Assert.Contains(residents, x => x.Name == "Mira" && x.Role == "Guard Captain" && x.CanFight);
         Assert.Contains(residents, x => x.Name == "Elowen" && x.Role == "Healer" && !x.CanFight);
         Assert.Contains(residents, x => x.Name == "Nessa" && x.Role == "Lumberjack" && !x.CanFight);
         Assert.Contains(residents, x => x.Name == "Dain" && x.Role == "Quarry Worker" && !x.CanFight);
@@ -60,6 +67,10 @@ public sealed class PhaseSevenEndpointTests : IClassFixture<PhaseTwoWebApplicati
             Assert.Equal(resident.MaximumHealth, resident.Health);
             Assert.False(string.IsNullOrWhiteSpace(resident.Dialogue));
             Assert.NotEmpty(resident.Skills);
+            Assert.False(string.IsNullOrWhiteSpace(resident.PrimarySkill));
+            Assert.True(resident.SkillLevel >= 1);
+            Assert.False(string.IsNullOrWhiteSpace(resident.Trait));
+            Assert.False(string.IsNullOrWhiteSpace(resident.MemorySummary));
             Assert.True(resident.WorldDay >= 1);
             Assert.InRange(resident.WorldHour, 0, 23);
         });
@@ -88,7 +99,8 @@ public sealed class PhaseSevenEndpointTests : IClassFixture<PhaseTwoWebApplicati
             "/api/v1/regions/stonehaven-valley/residents",
             JsonOptions);
         Assert.NotNull(morning);
-        Assert.Equal("Patrolling Stonehaven", Assert.Single(morning, x => x.Name == "Captain Rowan").Activity);
+        Assert.Equal("Patrolling Stonehaven", Assert.Single(morning, x => x.Name == "Mira").Activity);
+        Assert.Equal("Working as reeve of stonehaven", Assert.Single(morning, x => x.Name == "Reeve Aldric Vale").Activity);
         Assert.Equal("Working as blacksmith", Assert.Single(morning, x => x.Name == "Brann").Activity);
 
         await SetSimulatedHoursAsync(23);
@@ -97,7 +109,7 @@ public sealed class PhaseSevenEndpointTests : IClassFixture<PhaseTwoWebApplicati
             JsonOptions);
         Assert.NotNull(night);
         Assert.Equal("Guarding the gate", Assert.Single(night, x => x.Name == "Mira").Activity);
-        Assert.Equal("Missing", Assert.Single(night, x => x.Name == "Mara").Activity);
+        Assert.Equal("Missing", Assert.Single(night, x => x.Name == "Mara Venn").Activity);
         Assert.Equal("Resting at home", Assert.Single(night, x => x.Name == "Brann").Activity);
     }
 
@@ -139,6 +151,12 @@ public sealed class PhaseSevenEndpointTests : IClassFixture<PhaseTwoWebApplicati
         string Status,
         bool CanFight,
         string[] Skills,
+        string PrimarySkill,
+        int SkillLevel,
+        string Trait,
+        long Experience,
+        bool IsMajor,
+        string MemorySummary,
         string Activity,
         PositionResponse Position,
         PositionResponse HomePosition,

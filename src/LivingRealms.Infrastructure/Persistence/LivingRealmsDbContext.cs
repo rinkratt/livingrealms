@@ -14,11 +14,11 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public static readonly Guid StonehavenVillageId = Guid.Parse("40000000-0000-4000-8000-000000000001");
     public static readonly Guid DarkwoodClanId = Guid.Parse("50000000-0000-4000-8000-000000000001");
     public static readonly Guid GoblinChiefCreatureId = Guid.Parse("f4c5a7b9-644f-4c85-b18f-ac38294e3001");
-    public static readonly Guid CaptainRowanResidentId = Guid.Parse("70000000-0000-4000-8000-000000000001");
+    public static readonly Guid StonehavenLeaderResidentId = Guid.Parse("70000000-0000-4000-8000-000000000001");
     public static readonly Guid MiraResidentId = Guid.Parse("70000000-0000-4000-8000-000000000002");
     public static readonly Guid TomasResidentId = Guid.Parse("70000000-0000-4000-8000-000000000003");
     public static readonly Guid BrannResidentId = Guid.Parse("70000000-0000-4000-8000-000000000004");
-    public static readonly Guid MaraResidentId = Guid.Parse("70000000-0000-4000-8000-000000000005");
+    public static readonly Guid MaraVennResidentId = Guid.Parse("70000000-0000-4000-8000-000000000005");
     public static readonly Guid ElowenResidentId = Guid.Parse("70000000-0000-4000-8000-000000000006");
     public static readonly Guid OrenResidentId = Guid.Parse("70000000-0000-4000-8000-000000000007");
     public static readonly Guid NessaResidentId = Guid.Parse("70000000-0000-4000-8000-000000000008");
@@ -198,6 +198,9 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
             entity.HasIndex(x => new { x.SettlementId, x.Name }).IsUnique();
             entity.Property(x => x.Name).HasMaxLength(80);
             entity.Property(x => x.Role).HasMaxLength(80);
+            entity.Property(x => x.PrimarySkill).HasMaxLength(80);
+            entity.Property(x => x.Trait).HasMaxLength(80);
+            entity.Property(x => x.MemorySummary).HasMaxLength(500);
             entity.Property(x => x.Dialogue).HasMaxLength(500);
             entity.HasOne(x => x.Settlement)
                 .WithMany(x => x.Residents)
@@ -205,25 +208,37 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                 .OnDelete(DeleteBehavior.Cascade);
             entity.HasData(
                 CreateResident(
-                    CaptainRowanResidentId,
-                    "Captain Rowan",
-                    "Guard Captain",
-                    145,
-                    true,
+                    StonehavenLeaderResidentId,
+                    "Reeve Aldric Vale",
+                    "Reeve of Stonehaven",
+                    115,
+                    false,
                     new(-4, 0.08f, -19),
-                    new(0, 0.08f, 0.5f),
+                    new(0, 0.08f, -14),
                     new(0, 0.08f, -11),
-                    "Keep your eyes on the northern road. Darkwood has been bolder every night."),
+                    "Stonehaven survives by remembering every promise, shortage, and warning before it becomes a crisis.",
+                    "Administration",
+                    5,
+                    "Steadfast",
+                    420,
+                    true,
+                    "The village council appointed Aldric to coordinate Stonehaven's stores, defenses, and growing households."),
                 CreateResident(
                     MiraResidentId,
                     "Mira",
-                    "Stonehaven Guard",
-                    115,
+                    "Guard Captain",
+                    135,
                     true,
                     new(-7, 0.08f, -21),
                     new(-2.5f, 0.08f, 1.5f),
                     new(-3, 0.08f, -11),
-                    "The gate is quiet for now. I would prefer it stayed that way."),
+                    "The gate is quiet for now. My patrols intend to keep it that way.",
+                    "Command",
+                    4,
+                    "Disciplined",
+                    360,
+                    true,
+                    "Mira earned command of Stonehaven's guard after organizing the defense of the eastern farms."),
                 CreateResident(
                     TomasResidentId,
                     "Tomas",
@@ -233,7 +248,13 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                     new(7, 0.08f, -21),
                     new(2.5f, 0.08f, 1.5f),
                     new(3, 0.08f, -11),
-                    "If the horn sounds, get behind the palisade and let us hold the gate."),
+                    "If the horn sounds, get behind the palisade and let us hold the gate.",
+                    "Patrol",
+                    3,
+                    "Loyal",
+                    180,
+                    false,
+                    "Tomas has served the northern watch through three Darkwood alarms."),
                 CreateResident(
                     BrannResidentId,
                     "Brann",
@@ -243,17 +264,29 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                     new(-15, 0.08f, -17),
                     new(-11, 0.08f, -9.2f),
                     new(-8, 0.08f, -14),
-                    "Good iron remembers the hand that shaped it. Bring me ore and I will show you."),
+                    "Good iron remembers the hand that shaped it. Bring me ore and I will show you.",
+                    "Blacksmithing",
+                    4,
+                    "Exacting",
+                    320,
+                    true,
+                    "Brann repaired the guard's weapons during Stonehaven's first recorded Darkwood raid."),
                 CreateResident(
-                    MaraResidentId,
-                    "Mara",
-                    "Innkeeper",
-                    90,
-                    false,
+                    MaraVennResidentId,
+                    "Mara Venn",
+                    "Militia Recruit",
+                    95,
+                    true,
                     new(15, 0.08f, -18),
-                    new(11, 0.08f, -10.2f),
+                    new(7, 0.08f, -2),
                     new(8, 0.08f, -14),
-                    "The hearth is warm, the stew is honest, and the rumors are free.",
+                    "I joined the militia because Stonehaven needed another shield, not because anyone promised I would become a hero.",
+                    "Swordsmanship",
+                    2,
+                    "Courageous",
+                    80,
+                    false,
+                    "Mara Venn was last seen scouting beyond the northern road; her fate remains unresolved.",
                     ResidentStatus.Missing),
                 CreateResident(
                     ElowenResidentId,
@@ -264,7 +297,13 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                     new(-16, 0.08f, -29),
                     new(-12, 0.08f, -22.6f),
                     new(-8, 0.08f, -18),
-                    "Wounds heal faster when they are tended before pride makes them worse."),
+                    "Wounds heal faster when they are tended before pride makes them worse.",
+                    "Medicine",
+                    4,
+                    "Compassionate",
+                    300,
+                    true,
+                    "Elowen kept Stonehaven's wounded alive through the first night of the gate raid."),
                 CreateResident(
                     OrenResidentId,
                     "Oren",
@@ -274,7 +313,13 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                     new(16, 0.08f, -30),
                     new(12, 0.08f, -23.6f),
                     new(8, 0.08f, -18),
-                    "Supplies are counted twice these days. Trouble makes every loaf and arrow matter."),
+                    "Supplies are counted twice these days. Trouble makes every loaf and arrow matter.",
+                    "Trade",
+                    3,
+                    "Prudent",
+                    210,
+                    false,
+                    "Oren began recording reserve thresholds after shortages nearly stopped the wall works."),
                 CreateResident(
                     NessaResidentId,
                     "Nessa",
@@ -284,7 +329,13 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                     new(-7, 0.08f, -23),
                     new(-36.5f, 0.08f, -18),
                     new(-4, 0.08f, -15),
-                    "Every sound timber I bring home becomes a roof, a gate, or one more wall between us and Darkwood."),
+                    "Every sound timber I bring home becomes a roof, a gate, or one more wall between us and Darkwood.",
+                    "Woodcutting",
+                    3,
+                    "Resolute",
+                    190,
+                    false,
+                    "Nessa took responsibility for the timber assigned to Stonehaven's curtain wall."),
                 CreateResident(
                     DainResidentId,
                     "Dain",
@@ -294,7 +345,13 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                     new(7, 0.08f, -24),
                     new(88, 0.08f, -96),
                     new(4, 0.08f, -15),
-                    "Stonehaven's walls begin in the quarry. Give me a strong back and enough daylight."));
+                    "Stonehaven's walls begin in the quarry. Give me a strong back and enough daylight.",
+                    "Quarrying",
+                    3,
+                    "Patient",
+                    190,
+                    false,
+                    "Dain marks every stone load so the wall ledger can explain where its strength came from."));
         });
         modelBuilder.Entity<SettlementRaid>(entity =>
         {
@@ -366,6 +423,12 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
         Vector3Seed work,
         Vector3Seed safe,
         string dialogue,
+        string primarySkill,
+        int skillLevel,
+        string trait,
+        long experience,
+        bool isMajor,
+        string memorySummary,
         ResidentStatus status = ResidentStatus.Active)
     {
         return new SettlementResident
@@ -378,6 +441,12 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
             MaximumHealth = maximumHealth,
             Status = status,
             CanFight = canFight,
+            PrimarySkill = primarySkill,
+            SkillLevel = skillLevel,
+            Trait = trait,
+            Experience = experience,
+            IsMajor = isMajor,
+            MemorySummary = memorySummary,
             HomeX = home.X,
             HomeY = home.Y,
             HomeZ = home.Z,

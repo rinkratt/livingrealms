@@ -117,6 +117,12 @@ public sealed class SettlementResident : Entity
     public int MaximumHealth { get; set; } = 100;
     public ResidentStatus Status { get; set; } = ResidentStatus.Active;
     public bool CanFight { get; set; }
+    public required string PrimarySkill { get; set; }
+    public int SkillLevel { get; set; } = 1;
+    public required string Trait { get; set; }
+    public long Experience { get; set; }
+    public bool IsMajor { get; set; }
+    public required string MemorySummary { get; set; }
     public float HomeX { get; set; }
     public float HomeY { get; set; }
     public float HomeZ { get; set; }

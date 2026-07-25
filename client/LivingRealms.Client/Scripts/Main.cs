@@ -8,7 +8,7 @@ namespace LivingRealms.Client;
 
 public partial class Main : Control
 {
-    private const string ClientVersion = "0.9.3";
+    private const string ClientVersion = "0.9.4";
     private const string UpdateManifestUrl = "https://living-realms.com/downloads/windows-version.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -1270,7 +1270,7 @@ public partial class Main : Control
             if (starting)
             {
                 world.SetCombatStatus(
-                    "The Darkwood war horn sounded. Four attackers formed at Gorvak's camp and began the road march to Stonehaven.",
+                    "The Darkwood war horn sounded. Four attackers formed at the clan camp and began the road march to Stonehaven.",
                     false);
             }
             else if (!state.Active && state.Raid?.OutcomeSummary is not null)
@@ -1482,6 +1482,12 @@ public partial class Main : Control
         resident.Status,
         resident.CanFight,
         resident.Skills,
+        resident.PrimarySkill,
+        resident.SkillLevel,
+        resident.Trait,
+        resident.Experience,
+        resident.IsMajor,
+        resident.MemorySummary,
         resident.Activity,
         new Vector3(resident.Position.X, resident.Position.Y, resident.Position.Z),
         new Vector3(resident.HomePosition.X, resident.HomePosition.Y, resident.HomePosition.Z),
@@ -1592,7 +1598,12 @@ public partial class Main : Control
                 state.Settlement.Leader.Role,
                 state.Settlement.Leader.Health,
                 state.Settlement.Leader.MaximumHealth,
-                state.Settlement.Leader.Status)),
+                state.Settlement.Leader.Status,
+                state.Settlement.Leader.PrimarySkill,
+                state.Settlement.Leader.SkillLevel,
+                state.Settlement.Leader.Trait,
+                state.Settlement.Leader.IsMajor,
+                state.Settlement.Leader.MemorySummary)),
         new WorldEventReadinessData(
             new WorldTriggerReadinessData(
                 state.EventReadiness.DarkwoodRaid.Name,
@@ -1939,6 +1950,12 @@ public partial class Main : Control
         public string Status { get; init; } = string.Empty;
         public bool CanFight { get; init; }
         public string[] Skills { get; init; } = [];
+        public string PrimarySkill { get; init; } = string.Empty;
+        public int SkillLevel { get; init; }
+        public string Trait { get; init; } = string.Empty;
+        public long Experience { get; init; }
+        public bool IsMajor { get; init; }
+        public string MemorySummary { get; init; } = string.Empty;
         public string Activity { get; init; } = string.Empty;
         public PositionResponse Position { get; init; } = new();
         public PositionResponse HomePosition { get; init; } = new();
@@ -2260,6 +2277,11 @@ public partial class Main : Control
         public int Health { get; init; }
         public int MaximumHealth { get; init; }
         public string Status { get; init; } = string.Empty;
+        public string PrimarySkill { get; init; } = string.Empty;
+        public int SkillLevel { get; init; }
+        public string Trait { get; init; } = string.Empty;
+        public bool IsMajor { get; init; }
+        public string MemorySummary { get; init; } = string.Empty;
     }
 
     private sealed class WorldEventReadinessResponse

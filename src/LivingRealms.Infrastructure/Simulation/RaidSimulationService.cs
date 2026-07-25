@@ -8,6 +8,7 @@ namespace LivingRealms.Infrastructure.Simulation;
 public sealed partial class RaidSimulationService(
     LivingRealmsDbContext database,
     WorldPopulationService population,
+    FactionLeadershipService leadership,
     ILogger<RaidSimulationService> logger)
 {
     private static readonly TimeSpan OnlineRaidRoundInterval = TimeSpan.FromSeconds(10);
@@ -76,8 +77,8 @@ public sealed partial class RaidSimulationService(
 
         var faction = await database.Factions
             .SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodClanId, cancellationToken);
-        var leader = await database.Creatures.AsNoTracking()
-            .SingleAsync(x => x.Id == LivingRealmsDbContext.GoblinChiefCreatureId, cancellationToken);
+        var leader = await leadership.EnsureLeaderAsync(faction, startedAt, cancellationToken)
+            ?? throw new InvalidOperationException("Darkwood has no living leader capable of ordering a raid.");
         var settlement = await database.Settlements
             .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId, cancellationToken);
         var availableMembers = await database.Creatures
@@ -85,7 +86,7 @@ public sealed partial class RaidSimulationService(
                         x.Status == CreatureStatus.Alive &&
                         x.Health > 0 &&
                         x.Role != "Raid Attacker" &&
-                        x.Id != LivingRealmsDbContext.GoblinChiefCreatureId)
+                        x.Id != leader.Id)
             .ToListAsync(cancellationToken);
         var automaticRaid = source.Equals("world-simulation", StringComparison.OrdinalIgnoreCase);
         var raidSize = automaticRaid
@@ -167,7 +168,7 @@ public sealed partial class RaidSimulationService(
         {
             EventType = "stonehaven_raid_begun",
             Title = "The Darkwood war horn sounded at Stonehaven",
-            Description = $"All {raidMembers.Length} raid-ready Darkwood fighters left Gorvak's camp and marched for Stonehaven on world day {raid.WorldDay}. Stonehaven's guards and every nearby player can change the outcome.",
+            Description = $"All {raidMembers.Length} raid-ready Darkwood fighters left {leader.Name}'s camp and marched for Stonehaven on world day {raid.WorldDay}. Stonehaven's guards and every nearby player can change the outcome.",
             RegionId = LivingRealmsDbContext.StonehavenValleyId,
             FactionId = faction.Id,
             CreatureId = leader.Id,
@@ -434,8 +435,8 @@ public sealed partial class RaidSimulationService(
         database.WorldHistory.Add(new WorldHistory
         {
             EventType = "stonehaven_counterattack_begun",
-            Title = "Captain Rowan mustered twenty for Darkwood",
-            Description = $"Darkwood completed its level {faction.DevelopmentStage} fortified camp. Captain Rowan assembled {soldiers.Length} named Stonehaven soldiers and militia to march on the camp, defeat its goblin defenders, and tear it back down a level.",
+            Title = "Guard Captain Mira mustered twenty for Darkwood",
+            Description = $"Darkwood completed its level {faction.DevelopmentStage} fortified camp. Guard Captain Mira assembled {soldiers.Length} named Stonehaven soldiers and militia to march on the camp, defeat its goblin defenders, and tear it back down a level.",
             RegionId = LivingRealmsDbContext.StonehavenValleyId,
             FactionId = faction.Id,
             OccurredAt = startedAt,
@@ -489,7 +490,9 @@ public sealed partial class RaidSimulationService(
                 break;
             }
 
-            var defenders = LivingDarkwoodDefenders(goblins);
+            var defenders = LivingDarkwoodDefenders(
+                goblins,
+                assault.DefendingFaction.LeaderCreatureId);
             if (assault.Status == StonehavenAssaultStatus.FightingGoblins)
             {
                 if (defenders.Length == 0)
@@ -499,14 +502,22 @@ public sealed partial class RaidSimulationService(
                     continue;
                 }
 
-                DamageDarkwoodDefenders(soldiers, goblins, advancedAt);
-                defenders = LivingDarkwoodDefenders(goblins);
+                DamageDarkwoodDefenders(
+                    soldiers,
+                    goblins,
+                    assault.DefendingFaction.LeaderCreatureId,
+                    advancedAt);
+                defenders = LivingDarkwoodDefenders(
+                    goblins,
+                    assault.DefendingFaction.LeaderCreatureId);
                 if (defenders.Length > 0)
                 {
                     DamageStonehavenSoldiers(defenders, assault, advancedAt);
                 }
                 assault.SoldiersRemaining = LivingAssaultMembers(assault.Members).Length;
-                assault.GoblinsRemaining = LivingDarkwoodDefenders(goblins).Length;
+                assault.GoblinsRemaining = LivingDarkwoodDefenders(
+                    goblins,
+                    assault.DefendingFaction.LeaderCreatureId).Length;
                 assault.DarkwoodCasualties = Math.Max(0,
                     assault.InitialGoblinCount - assault.GoblinsRemaining);
                 if (assault.SoldiersRemaining == 0)
@@ -603,7 +614,7 @@ public sealed partial class RaidSimulationService(
 
         var availableRaiders = await database.Creatures.AsNoTracking()
             .CountAsync(x => x.FactionId == faction.Id &&
-                             x.Id != LivingRealmsDbContext.GoblinChiefCreatureId &&
+                             x.Id != faction.LeaderCreatureId &&
                              x.Status == CreatureStatus.Alive &&
                              x.Health > 0 &&
                              x.Role != "Raid Attacker",
@@ -648,10 +659,12 @@ public sealed partial class RaidSimulationService(
             .OrderBy(x => x.Resident.Name)
             .ToArray();
 
-    private static Creature[] LivingDarkwoodDefenders(IEnumerable<Creature> goblins) =>
+    private static Creature[] LivingDarkwoodDefenders(
+        IEnumerable<Creature> goblins,
+        Guid? leaderCreatureId) =>
         goblins
             .Where(x => x.Status == CreatureStatus.Alive && x.Health > 0)
-            .OrderBy(x => x.Id == LivingRealmsDbContext.GoblinChiefCreatureId)
+            .OrderBy(x => x.Id == leaderCreatureId)
             .ThenBy(x => x.Health)
             .ThenBy(x => x.Name)
             .ToArray();
@@ -668,11 +681,12 @@ public sealed partial class RaidSimulationService(
     private static void DamageDarkwoodDefenders(
         StonehavenAssaultMember[] soldiers,
         IEnumerable<Creature> goblins,
+        Guid? leaderCreatureId,
         DateTimeOffset damagedAt)
     {
         for (var index = 0; index < soldiers.Length; index++)
         {
-            var defenders = LivingDarkwoodDefenders(goblins);
+            var defenders = LivingDarkwoodDefenders(goblins, leaderCreatureId);
             if (defenders.Length == 0)
             {
                 break;
@@ -685,7 +699,7 @@ public sealed partial class RaidSimulationService(
             target.LastProcessedAt = damagedAt;
             if (target.Health == 0)
             {
-                target.Status = target.Id == LivingRealmsDbContext.GoblinChiefCreatureId
+                target.Status = target.Id == leaderCreatureId
                     ? CreatureStatus.Dead
                     : CreatureStatus.Retired;
                 target.RespawnAt = null;
@@ -745,7 +759,9 @@ public sealed partial class RaidSimulationService(
             : StonehavenAssaultStatus.DarkwoodVictory;
         assault.ResolvedAt = resolvedAt;
         assault.SoldiersRemaining = LivingAssaultMembers(assault.Members).Length;
-        assault.GoblinsRemaining = LivingDarkwoodDefenders(goblins).Length;
+        assault.GoblinsRemaining = LivingDarkwoodDefenders(
+            goblins,
+            assault.DefendingFaction.LeaderCreatureId).Length;
         assault.DarkwoodCasualties = Math.Max(0,
             assault.InitialGoblinCount - assault.GoblinsRemaining);
 
@@ -783,29 +799,51 @@ public sealed partial class RaidSimulationService(
             palisade.CompletedAt = null;
             palisade.UpdatedAt = resolvedAt;
 
-            var gorvak = goblins.Single(x => x.Id == LivingRealmsDbContext.GoblinChiefCreatureId);
-            gorvak.Status = CreatureStatus.Alive;
-            gorvak.Health = Math.Max(1, gorvak.MaximumHealth / 4);
-            gorvak.Role = "Chief";
-            gorvak.PositionX = gorvak.SpawnX;
-            gorvak.PositionY = gorvak.SpawnY;
-            gorvak.PositionZ = gorvak.SpawnZ;
-            gorvak.RespawnAt = null;
-            gorvak.UpdatedAt = resolvedAt;
-            gorvak.LastProcessedAt = resolvedAt;
-            gorvak.Title = faction.DevelopmentStage >= 2 && gorvak.Level >= 9
-                ? "Goblin Chieftain"
-                : "Goblin Chief";
+            var defeatedLeader = faction.LeaderCreatureId is null
+                ? null
+                : goblins.SingleOrDefault(x =>
+                    x.Id == faction.LeaderCreatureId.Value &&
+                    (x.Status != CreatureStatus.Alive || x.Health <= 0));
+            FactionDefeatResult? succession = null;
+            if (defeatedLeader is not null)
+            {
+                succession = await leadership.ResolvePersistentDefeatAsync(
+                    defeatedLeader,
+                    resolvedAt,
+                    adjustPopulation: false,
+                    cancellationToken: cancellationToken);
+            }
+
+            var currentLeader = await leadership.EnsureLeaderAsync(
+                faction,
+                resolvedAt,
+                cancellationToken);
+            if (defeatedLeader is null && currentLeader is not null)
+            {
+                currentLeader.Health = Math.Max(1, currentLeader.MaximumHealth / 4);
+                currentLeader.PositionX = currentLeader.SpawnX;
+                currentLeader.PositionY = currentLeader.SpawnY;
+                currentLeader.PositionZ = currentLeader.SpawnZ;
+                currentLeader.RespawnAt = null;
+                currentLeader.UpdatedAt = resolvedAt;
+                currentLeader.LastProcessedAt = resolvedAt;
+            }
 
             faction.Population = goblins.Count(x =>
                 x.Status == CreatureStatus.Alive && x.Health > 0);
-            faction.Population = Math.Max(1, faction.Population);
-            faction.MilitaryStrength = Math.Max(10,
-                faction.Population * 6 + gorvak.Level * 8 + faction.DevelopmentStage * 25);
+            faction.MilitaryStrength = Math.Max(0,
+                faction.Population * 6 +
+                (currentLeader?.Level ?? 0) * 8 +
+                faction.DevelopmentStage * 25);
             faction.UpdatedAt = resolvedAt;
+            var leaderOutcome = succession?.ChronicleSummary ??
+                                (currentLeader is null
+                                    ? "Darkwood was left without a leader."
+                                    : $"{currentLeader.Name} escaped wounded.");
             assault.OutcomeSummary =
                 $"Stonehaven's {assault.InitialSoldierCount} fighters cleared Darkwood's defenders and destroyed the fortified camp. " +
-                $"Darkwood fell from level {assault.CampLevelBefore} to level {assault.CampLevelAfter}; {assault.SoldiersRemaining} Stonehaven fighters returned and Gorvak escaped wounded.";
+                $"Darkwood fell from level {assault.CampLevelBefore} to level {assault.CampLevelAfter}; " +
+                $"{assault.SoldiersRemaining} Stonehaven fighters returned. {leaderOutcome}";
         }
         else
         {

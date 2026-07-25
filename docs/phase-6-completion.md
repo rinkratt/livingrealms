@@ -1,11 +1,13 @@
 # Phase 6 Completion Report
 
+> Historical phase record. Current world-time, leadership, death, and construction rules are documented in `alignment-update-0.9.4.md`.
+
 Phase 6 adds the first server-driven world that continues without a connected player.
 
 ## Delivered
 
 - Persistent Darkwood Clan population, capacity, resources, structures, development stage, territory, morale, aggression, military strength, and simulation clock
-- Persistent Gorvak leadership, title, experience, level, combat growth, healing, and respawn state
+- Persistent Darkwood leadership, title, experience, level, combat growth, and succession state
 - Stonehaven Village population, supplies, structural integrity, guard strength, and defense state
 - Elapsed-time catch-up on worker startup and on every 60-second worker tick
 - Durable scheduled events with unique idempotency keys, atomic claims, retry limits, and interrupted-event recovery
@@ -13,7 +15,7 @@ Phase 6 adds the first server-driven world that continues without a connected pl
 - Authenticated world-state and history API endpoints
 - Development-only accelerated-time endpoint for advancing 1 to 168 world hours
 - Godot Living World panel on **J**, world-day HUD, recent chronicle, and stage-dependent Darkwood camp geometry
-- Deterministic Gorvak combat scaling: every level increases maximum health, attack, and defense, and the values appear in both the Living World panel and boss label
+- Deterministic leader combat scaling: every level increases maximum health, attack, and defense, and the values appear in both the Living World panel and boss label
 - Obstacle-aware creature pursuit with line-of-sight attacks, wall steering, and stuck recovery
 - A* valley route planning with obstacle clearance and moving-target replanning, replacing circular wall-following with deliberate waypoint pursuit
 - Committed pursuit state with detection hysteresis: recovery routes are discarded on clear sight, route switching is rate-limited, and enemies do not oscillate between chase and return-home behavior
@@ -27,13 +29,13 @@ Phase 6 adds the first server-driven world that continues without a connected pl
 
 ## Simulation behavior
 
-The development playtest uses one world hour per real minute. A single catch-up run is capped at 168 world hours. The worker stores the last successfully processed time and gives each queued progression block a deterministic key, so a restart cannot silently apply the same block twice.
+The current playtest uses one world minute per real minute. A single catch-up run is capped at 168 world hours. The worker stores the last successfully processed time and gives each queued progression block a deterministic key, so a restart cannot silently apply the same block twice.
 
 The first three visible Darkwood stages are:
 
 1. Encampment - hide tents and crude stockpile
-2. Established Camp - palisade, hunter lodge, larger population capacity, and Chieftain Gorvak
-3. Fortified Camp - watchtower, iron workshop, stronger military, and Warlord Gorvak
+2. Established Camp - palisade, hunter lodge, larger population capacity, and a Chieftain-led clan
+3. Fortified Camp - watchtower, iron workshop, stronger military, and a Warlord-led clan
 
 ## Verification
 

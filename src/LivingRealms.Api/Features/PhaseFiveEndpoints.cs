@@ -262,6 +262,7 @@ public static class PhaseFiveEndpoints
         HttpContext context,
         LivingRealmsDbContext database,
         RaidSimulationService raidSimulation,
+        FactionLeadershipService factionLeadership,
         ILoggerFactory loggerFactory)
     {
         var character = await GetSelectedCharacterAsync(context, database);
@@ -341,7 +342,10 @@ public static class PhaseFiveEndpoints
         RespawnCreatureIfReady(creature, now);
         if (creature.Status != CreatureStatus.Alive)
         {
-            return Results.Conflict(new ErrorResponse("That creature is defeated and has not respawned yet."));
+            return Results.Conflict(new ErrorResponse(
+                creature.FactionId is null
+                    ? "That creature is defeated and has not respawned yet."
+                    : "That named faction member is no longer active in the world."));
         }
 
         UpdateCharacterPosition(character, request.PlayerPosition, now);
@@ -369,11 +373,10 @@ public static class PhaseFiveEndpoints
         var experienceGained = 0;
         var leveledUp = false;
         RaidContributionResult? raidContribution = null;
+        FactionDefeatResult? factionDefeat = null;
         IReadOnlyCollection<LootResponse> loot = [];
         if (defeated)
         {
-            creature.Status = CreatureStatus.Dead;
-            creature.RespawnAt = now.AddSeconds(Math.Max(15, creature.Species.RespawnSeconds));
             creature.PositionX = creature.SpawnX;
             creature.PositionY = creature.SpawnY;
             creature.PositionZ = creature.SpawnZ;
@@ -386,6 +389,14 @@ public static class PhaseFiveEndpoints
                 character.Id,
                 now,
                 context.RequestAborted);
+            if (raidContribution is null)
+            {
+                factionDefeat = await factionLeadership.ResolvePersistentDefeatAsync(
+                    creature,
+                    now,
+                    character.Id,
+                    cancellationToken: context.RequestAborted);
+            }
         }
 
         await database.SaveChangesAsync(context.RequestAborted);
@@ -399,6 +410,10 @@ public static class PhaseFiveEndpoints
         if (raidContribution is not null)
         {
             message += $" Stonehaven gained {raidContribution.ContributionGained} raid strength from the victory.";
+        }
+        if (!string.IsNullOrWhiteSpace(factionDefeat?.ChronicleSummary))
+        {
+            message += $" {factionDefeat.ChronicleSummary}";
         }
         return Results.Ok(new SkillUseResponse(
             ToCharacterResponse(character),
@@ -750,6 +765,11 @@ public static class PhaseFiveEndpoints
 
     private static void RespawnCreatureIfReady(Creature creature, DateTimeOffset now)
     {
+        if (creature.FactionId is not null)
+        {
+            creature.RespawnAt = null;
+            return;
+        }
         if (creature.Status != CreatureStatus.Dead || creature.RespawnAt is null || creature.RespawnAt > now)
         {
             return;

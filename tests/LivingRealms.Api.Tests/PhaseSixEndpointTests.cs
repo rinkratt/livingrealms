@@ -49,8 +49,8 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal(40, initial.Settlement.Wood);
         Assert.Equal(24, initial.Settlement.Stone);
         Assert.Equal(4, initial.Settlement.Iron);
-        Assert.Equal("Captain Rowan", initial.Settlement.Leader.Name);
-        Assert.Equal("Warden of Stonehaven", initial.Settlement.Leader.Title);
+        Assert.Equal("Reeve Aldric Vale", initial.Settlement.Leader.Name);
+        Assert.Equal("Reeve of Stonehaven", initial.Settlement.Leader.Title);
         Assert.Equal(6, initial.EventReadiness.DarkwoodRaid.Current);
         Assert.Equal(15, initial.EventReadiness.DarkwoodRaid.Required);
         Assert.Equal(8, initial.EventReadiness.StonehavenCounterattack.Current);
@@ -115,8 +115,8 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal(9, advanced.World.Settlement.Population);
         Assert.Equal(9, advanced.World.Settlement.LivingResidents);
         Assert.Equal(80, advanced.World.Settlement.Food);
-        Assert.Equal(44, advanced.World.Settlement.Wood);
-        Assert.Equal(36, advanced.World.Settlement.Stone);
+        Assert.Equal(18, advanced.World.Settlement.Wood);
+        Assert.Equal(18, advanced.World.Settlement.Stone);
         Assert.Equal(14, advanced.World.Settlement.Iron);
         Assert.Contains(advanced.World.RecentHistory, x => x.EventType == "stonehaven_population_growth");
         Assert.Contains(advanced.World.Faction.Structures, x => x.Name == "Timber Palisade");
@@ -130,6 +130,37 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.NotNull(history);
         Assert.Contains(history, x => x.EventType == "faction_progressed");
         Assert.Contains(history, x => x.Title.Contains("Darkwood", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DefeatedFactionLeaderStaysDeadAndARecordedSuccessorTakesCommand()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
+        var population = scope.ServiceProvider.GetRequiredService<WorldPopulationService>();
+        var leadership = scope.ServiceProvider.GetRequiredService<FactionLeadershipService>();
+        await population.EnsureDarkwoodClanMembersAsync();
+
+        var gorvak = await database.Creatures
+            .Include(x => x.Species)
+            .SingleAsync(x => x.Id == LivingRealmsDbContext.GoblinChiefCreatureId);
+        gorvak.Health = 0;
+        var result = await leadership.ResolvePersistentDefeatAsync(
+            gorvak,
+            new DateTimeOffset(2026, 7, 24, 12, 0, 0, TimeSpan.Zero));
+        await database.SaveChangesAsync();
+
+        Assert.True(result.LeadershipChanged);
+        Assert.NotNull(result.Successor);
+        Assert.NotEqual(gorvak.Id, result.Successor.Id);
+        Assert.Equal(CreatureStatus.Dead, gorvak.Status);
+        Assert.Null(gorvak.RespawnAt);
+        var faction = await database.Factions.SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodClanId);
+        Assert.Equal(result.Successor.Id, faction.LeaderCreatureId);
+        Assert.Contains(
+            await database.WorldHistory.ToListAsync(),
+            x => x.EventType == "faction_leadership_succession" &&
+                 x.Description.Contains(gorvak.Name));
     }
 
     [Fact]

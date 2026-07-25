@@ -1,11 +1,13 @@
 # Phase 7A Completion - Stonehaven Residents
 
+> Historical phase record. The build 0.9.4 alignment update supersedes the original resident roles below.
+
 Phase 7A establishes the settlement-NPC foundation requested before the first raid. Stonehaven Village now has eight persistent named residents whose state is owned by PostgreSQL and presented by the Godot client.
 
 ## Delivered
 
 - `SettlementResidents` stores each resident's name, role, health, maximum health, active/injured/missing/dead status, combat capability, home/work/safe locations, and dialogue.
-- Stonehaven begins with Captain Rowan, guards Mira and Tomas, Brann the blacksmith, Mara the innkeeper, Elowen the healer, Oren the storekeeper, and Nessa the villager.
+- Stonehaven begins with Reeve Aldric Vale, Guard Captain Mira, guard Tomas, Brann the blacksmith, Elowen the healer, Oren the storekeeper, Nessa the lumberjack, and Dain the quarry worker. Mara Venn remains a named missing militia recruit.
 - The authenticated resident endpoint requires a selected character and derives each resident's current activity and destination from the persistent world clock.
 - Guards patrol by day and guard the gate at night. Workers report to their places of work during role-specific hours and return home after hours. Injured residents use their safe location.
 - The client renders role-colored low-poly residents with names, roles, activities, and health. NPCs navigate the same obstacle map used by hostile creatures.

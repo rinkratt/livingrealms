@@ -51,6 +51,14 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         "Brakka", "Torg", "Zik", "Grom", "Ruzza", "Krek", "Vorn", "Draz"
     ];
 
+    private static readonly string[] DarkwoodEpithets =
+    [
+        "Ash-Ear", "Red Fang", "Moss-Back", "Crooked Spear", "Black Nail", "Bog-Eye",
+        "Split Helm", "Thorn-Foot", "Iron Tooth", "Mud-Cloak", "Crow-Bone", "Night-Ear",
+        "Root-Cutter", "Gray Scar", "Wolf-Bait", "Cold Hand", "Flint-Eye", "Briar-Born",
+        "Stone Jaw", "Smoke-Snout", "Ragged Ear", "Deep-Claw", "Rotwood", "Moon-Biter"
+    ];
+
     private static readonly (float X, float Z)[] DarkwoodCampPosts =
     [
         (-4, 3), (3, 4), (10, 0), (9, 10), (-7, 12), (-13, 0), (-12, -10), (4, 13),
@@ -73,13 +81,13 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         var needed = Math.Max(0, settlement.Population - livingCount);
 
         // Legacy placeholder residents remain in the Chronicle, but population
-        // growth reintroduces them in the intentional arrival order. Mara is a
+        // growth reintroduces them in the intentional arrival order. Mara Venn is a
         // story-specific missing resident and does not silently become a new
         // arrival.
         var arrivalNumber = Math.Max(0, livingCount - StartingStonehavenPopulation);
         foreach (var returning in existing
                      .Where(x => x.Status == ResidentStatus.Missing &&
-                                 x.Id != LivingRealmsDbContext.MaraResidentId)
+                                 x.Id != LivingRealmsDbContext.MaraVennResidentId)
                      .OrderBy(x => x.CreatedAt)
                      .ThenBy(x => x.Name)
                      .Take(needed))
@@ -131,7 +139,7 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             .Where(x => x.FactionId == faction.Id)
             .ToListAsync(cancellationToken);
         var members = allMembers
-            .Where(x => x.Status != CreatureStatus.Retired)
+            .Where(x => x.Status == CreatureStatus.Alive && x.Health > 0)
             .ToList();
         var needed = Math.Max(0, faction.Population - members.Count);
         if (needed == 0)
@@ -143,9 +151,17 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             .SingleAsync(x => x.Id == LivingRealmsDbContext.GoblinRaiderSpeciesId, cancellationToken);
         var knownNames = allMembers.Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var createdAt = DateTimeOffset.UtcNow;
-        for (var index = 0; index < DarkwoodNames.Length && needed > 0; index++)
+        var candidateIndex = 0;
+        while (candidateIndex < DarkwoodNames.Length * 100 && needed > 0)
         {
-            var name = DarkwoodNames[index];
+            var index = candidateIndex++;
+            var nameIndex = index % DarkwoodNames.Length;
+            var generation = index / DarkwoodNames.Length;
+            var name = generation == 0
+                ? DarkwoodNames[nameIndex]
+                : generation == 1
+                    ? $"{DarkwoodNames[nameIndex]} {DarkwoodEpithets[nameIndex]}"
+                    : $"{DarkwoodNames[nameIndex]} {DarkwoodEpithets[nameIndex]} {generation}";
             if (!knownNames.Add(name))
             {
                 continue;
@@ -165,7 +181,9 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             };
             var creature = new Creature
             {
-                Id = Guid.Parse($"74000000-0000-4000-8000-{index + 1:000000000000}"),
+                Id = generation == 0
+                    ? Guid.Parse($"74000000-0000-4000-8000-{index + 1:000000000000}")
+                    : Guid.NewGuid(),
                 SpeciesId = species.Id,
                 FactionId = faction.Id,
                 RegionId = LivingRealmsDbContext.StonehavenValleyId,
@@ -243,6 +261,12 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             MaximumHealth = maximumHealth,
             Status = ResidentStatus.Active,
             CanFight = canFight,
+            PrimarySkill = PrimarySkillFor(role),
+            SkillLevel = 1,
+            Trait = TraitFor(index),
+            Experience = 0,
+            IsMajor = false,
+            MemorySummary = $"{name} arrived in Stonehaven as a {role.ToLowerInvariant()} and has not yet entered the major chronicle.",
             HomeX = homeX,
             HomeY = 0.08f,
             HomeZ = homeZ,
@@ -277,6 +301,13 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         resident.Health = maximumHealth;
         resident.Status = ResidentStatus.Active;
         resident.CanFight = role is "Stonehaven Guard" or "Hunter";
+        resident.PrimarySkill = PrimarySkillFor(role);
+        resident.SkillLevel = 1;
+        resident.Trait = TraitFor(index);
+        resident.Experience = 0;
+        resident.IsMajor = false;
+        resident.MemorySummary =
+            $"{resident.Name} returned to Stonehaven as a {role.ToLowerInvariant()} and has not yet entered the major chronicle.";
         resident.HomeX = home.X;
         resident.HomeY = 0.08f;
         resident.HomeZ = home.Z;
@@ -345,4 +376,34 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         "Potter" => "A good vessel keeps grain dry, water clean, and medicine safe.",
         _ => "Stonehaven is our home, and every pair of hands has work to do."
     };
+
+    private static string PrimarySkillFor(string role) => role switch
+    {
+        "Stonehaven Guard" => "Swordsmanship",
+        "Farmer" => "Farming",
+        "Miner" => "Mining",
+        "Carpenter" => "Carpentry",
+        "Mason" => "Masonry",
+        "Hunter" => "Tracking",
+        "Weaver" => "Weaving",
+        "Baker" => "Baking",
+        "Fisher" => "Fishing",
+        "Tanner" => "Leatherworking",
+        "Brewer" => "Brewing",
+        "Stablehand" => "Animal Handling",
+        "Herbalist" => "Herbalism",
+        "Scribe" => "Recordkeeping",
+        "Potter" => "Pottery",
+        _ => "Local Knowledge"
+    };
+
+    private static string TraitFor(int index)
+    {
+        string[] traits =
+        [
+            "Diligent", "Cautious", "Generous", "Ambitious",
+            "Loyal", "Inventive", "Patient", "Sociable"
+        ];
+        return traits[Math.Abs(index) % traits.Length];
+    }
 }

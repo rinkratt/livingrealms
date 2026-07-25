@@ -4,7 +4,7 @@ namespace LivingRealms.Client;
 
 public partial class StonehavenValley : Node3D
 {
-    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.3";
+    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.4";
     private const float KnockoutProtectionDuration = 8.0f;
     private const float TargetCycleRadius = 32.0f;
     private const float WorldGridSize = 96.0f;
@@ -1230,6 +1230,8 @@ public partial class StonehavenValley : Node3D
             $"Darkwood structures: {structures}\n\n" +
             $"STONEHAVEN — HUMAN SETTLEMENT\n" +
             $"Leader: {state.Settlement.Leader.Name}, {state.Settlement.Leader.Title} ({state.Settlement.Leader.Role})   •   health {state.Settlement.Leader.Health}/{state.Settlement.Leader.MaximumHealth}   •   {state.Settlement.Leader.Status}\n" +
+            $"LEADERSHIP PROFILE   {state.Settlement.Leader.PrimarySkill} L{state.Settlement.Leader.SkillLevel}   •   {state.Settlement.Leader.Trait}   •   {(state.Settlement.Leader.IsMajor ? "MAJOR RESIDENT" : "RESIDENT")}\n" +
+            $"MEMORY   {state.Settlement.Leader.MemorySummary}\n" +
             $"Population: {state.Settlement.LivingResidents}/{state.Settlement.HousingCapacity} housed named residents   •   combat-ready {state.Settlement.CombatReadyResidents}   •   defense rating {state.Settlement.DefenseRating}   •   military power {state.Settlement.GuardStrength}\n" +
             $"Village supplies: food {state.Settlement.Food}   •   wood {state.Settlement.Wood}   •   stone {state.Settlement.Stone}   •   iron {state.Settlement.Iron}\n" +
             $"Growth: at most one new resident per world day, only when housing and the required food, timber, stone, and iron are available.\n\n" +
@@ -1318,7 +1320,7 @@ public partial class StonehavenValley : Node3D
                     : "LAST COUNTERATTACK: DARKWOOD HELD ITS CAMP";
             _raidDetails.Text =
                 $"STONEHAVEN COUNTERATTACK — {FormatCounterattackStatus(assault.Status).ToUpperInvariant()} ON WORLD DAY {assault.WorldDay}\n" +
-                $"Captain Rowan's force: {assault.SoldiersRemaining}/{assault.InitialSoldierCount} standing   •   " +
+                $"Guard Captain Mira's force: {assault.SoldiersRemaining}/{assault.InitialSoldierCount} standing   •   " +
                 $"Darkwood defenders: {assault.GoblinsRemaining}/{assault.InitialGoblinCount} standing\n" +
                 $"Camp: level {assault.CampLevelBefore}   •   strength {assault.CampStrength}/{assault.InitialCampStrength}   •   " +
                 $"Stonehaven casualties {assault.StonehavenCasualties}   •   Darkwood casualties {assault.DarkwoodCasualties}\n" +
@@ -1823,7 +1825,7 @@ public partial class StonehavenValley : Node3D
     private static WorldStateData CreatePreviewWorldState() => new(
         0,
         1,
-        "1 real minute = 1 world hour",
+        "Real time: 1 real minute = 1 world minute",
         true,
         new WorldFactionData(
             "Darkwood Clan", 7, 10, 1, "Encampment", 1, 45, 55, 1, 66,
@@ -1851,25 +1853,30 @@ public partial class StonehavenValley : Node3D
             65,
             42,
             new WorldSettlementLeaderData(
-                "Captain Rowan",
-                "Warden of Stonehaven",
-                "Guard Captain",
-                145,
-                145,
-                "Active")),
+                "Reeve Aldric Vale",
+                "Reeve of Stonehaven",
+                "Reeve of Stonehaven",
+                105,
+                105,
+                "Active",
+                "Administration",
+                4,
+                "Pragmatic",
+                true,
+                "Aldric keeps Stonehaven's stores, work assignments, and defenses accountable.")),
         new WorldEventReadinessData(
             new WorldTriggerReadinessData(
                 "Darkwood raid on Stonehaven",
                 6,
                 15,
                 false,
-                "A raid launches when Darkwood has 15 living raid-ready goblins; Gorvak remains at the camp and is not counted."),
+                "A raid launches when Darkwood has 15 living raid-ready goblins; its current leader remains at the camp and is not counted."),
             new WorldTriggerReadinessData(
                 "Stonehaven counterattack on Darkwood",
                 8,
                 20,
                 false,
-                "Captain Rowan assembles 20 living residents after Darkwood completes camp level 3.")),
+                "Guard Captain Mira assembles 20 living residents after Darkwood completes camp level 3.")),
         new WorldEventQueueData(0, 0, 0),
         [
             new WorldHistoryData(
@@ -4038,7 +4045,7 @@ public partial class StonehavenValley : Node3D
 
     private static string CounterattackInstruction(string status) => status switch
     {
-        "Assembling" => "Twenty named residents are assembling under Captain Rowan at Stonehaven's gate.",
+        "Assembling" => "Twenty named residents are assembling under Guard Captain Mira at Stonehaven's gate.",
         "Marching" => "The formation is marching across the valley toward Darkwood.",
         "FightingGoblins" => "The soldiers must defeat every living goblin before they can damage the camp.",
         "AttackingCamp" => "The surviving soldiers are tearing down the level 3 camp. At zero camp strength, Darkwood loses one level.",
@@ -4261,6 +4268,12 @@ public sealed record WorldResidentData(
     string Status,
     bool CanFight,
     IReadOnlyCollection<string> Skills,
+    string PrimarySkill,
+    int SkillLevel,
+    string Trait,
+    long Experience,
+    bool IsMajor,
+    string MemorySummary,
     string Activity,
     Vector3 Position,
     Vector3 HomePosition,
@@ -4417,7 +4430,12 @@ public sealed record WorldSettlementLeaderData(
     string Role,
     int Health,
     int MaximumHealth,
-    string Status);
+    string Status,
+    string PrimarySkill,
+    int SkillLevel,
+    string Trait,
+    bool IsMajor,
+    string MemorySummary);
 public sealed record WorldEventReadinessData(
     WorldTriggerReadinessData DarkwoodRaid,
     WorldTriggerReadinessData StonehavenCounterattack);

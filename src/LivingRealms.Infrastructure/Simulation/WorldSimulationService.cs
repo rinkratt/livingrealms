@@ -13,6 +13,7 @@ public sealed partial class WorldSimulationService(
     LivingRealmsDbContext database,
     RaidSimulationService raidSimulation,
     WorldPopulationService population,
+    FactionLeadershipService leadership,
     IOptions<WorldSimulationOptions> options,
     ILogger<WorldSimulationService> logger)
 {
@@ -99,6 +100,7 @@ public sealed partial class WorldSimulationService(
             faction.Morale = 55;
             faction.TechnologyLevel = 1;
             faction.MilitaryStrength = 66;
+            faction.LeaderCreatureId = LivingRealmsDbContext.GoblinChiefCreatureId;
             faction.SimulatedHours = 0;
             faction.LastProcessedAt = resetAt;
             faction.NextDecisionAt = resetAt.AddHours(1);
@@ -188,11 +190,11 @@ public sealed partial class WorldSimulationService(
             settlement.UpdatedAt = resetAt;
             var originalStonehavenIds = new HashSet<Guid>
             {
-                LivingRealmsDbContext.CaptainRowanResidentId,
+                LivingRealmsDbContext.StonehavenLeaderResidentId,
                 LivingRealmsDbContext.MiraResidentId,
                 LivingRealmsDbContext.TomasResidentId,
                 LivingRealmsDbContext.BrannResidentId,
-                LivingRealmsDbContext.MaraResidentId,
+                LivingRealmsDbContext.MaraVennResidentId,
                 LivingRealmsDbContext.ElowenResidentId,
                 LivingRealmsDbContext.OrenResidentId,
                 LivingRealmsDbContext.NessaResidentId,
@@ -208,7 +210,7 @@ public sealed partial class WorldSimulationService(
             foreach (var resident in settlement.Residents.Except(laterResidents))
             {
                 resident.Health = resident.MaximumHealth;
-                resident.Status = resident.Id == LivingRealmsDbContext.MaraResidentId
+                resident.Status = resident.Id == LivingRealmsDbContext.MaraVennResidentId
                     ? ResidentStatus.Missing
                     : ResidentStatus.Active;
                 resident.UpdatedAt = resetAt;
@@ -494,8 +496,8 @@ public sealed partial class WorldSimulationService(
             .SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodClanId, cancellationToken);
         var settlement = await database.Settlements
             .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId, cancellationToken);
-        var leader = await database.Creatures
-            .SingleAsync(x => x.Id == LivingRealmsDbContext.GoblinChiefCreatureId, cancellationToken);
+        var leader = await leadership.EnsureLeaderAsync(faction, payload.ProcessedAt, cancellationToken)
+            ?? throw new InvalidOperationException("Darkwood has no living candidate able to lead the faction.");
         var creatures = await database.Creatures
             .Include(x => x.Species)
             .Where(x => x.RegionId == LivingRealmsDbContext.StonehavenValleyId)
@@ -609,16 +611,18 @@ public sealed partial class WorldSimulationService(
             settlement,
             activeStonehavenResidents,
             creatures,
+            resources,
             stonehavenWall,
             darkwoodPalisade);
 
         if (faction.DevelopmentStage == 1 &&
             faction.Population >= 8 &&
             resources[ResourceKind.Food].Amount >= 100 &&
-            resources[ResourceKind.Wood].Amount >= 100)
+            (darkwoodPalisade.CurrentLevel >= 1 ||
+             darkwoodPalisade.WoodContributed >= 120 &&
+             darkwoodPalisade.StoneContributed >= 40))
         {
             resources[ResourceKind.Food].Amount -= 20;
-            resources[ResourceKind.Wood].Amount -= 75;
             faction.DevelopmentStage = 2;
             faction.PopulationCapacity = 16;
             faction.TechnologyLevel = 2;
@@ -631,13 +635,9 @@ public sealed partial class WorldSimulationService(
         if (faction.DevelopmentStage == 2 &&
             faction.SimulatedHours >= 72 &&
             faction.Population >= 14 &&
-            resources[ResourceKind.Wood].Amount >= 180 &&
-            resources[ResourceKind.Stone].Amount >= 80 &&
             resources[ResourceKind.Iron].Amount >= 30 &&
             darkwoodPalisade.CurrentLevel >= darkwoodPalisade.MaximumLevel)
         {
-            resources[ResourceKind.Wood].Amount -= 120;
-            resources[ResourceKind.Stone].Amount -= 70;
             resources[ResourceKind.Iron].Amount -= 30;
             faction.DevelopmentStage = 3;
             faction.PopulationCapacity = 24;
@@ -687,17 +687,11 @@ public sealed partial class WorldSimulationService(
         leader.LastProcessedAt = payload.ProcessedAt;
         leader.UpdatedAt = payload.ProcessedAt;
 
-        var stonehavenAssaultActive = await database.StonehavenAssaults.AsNoTracking()
-            .AnyAsync(x => x.Status == StonehavenAssaultStatus.Assembling ||
-                           x.Status == StonehavenAssaultStatus.Marching ||
-                           x.Status == StonehavenAssaultStatus.FightingGoblins ||
-                           x.Status == StonehavenAssaultStatus.AttackingCamp,
-                cancellationToken);
         foreach (var creature in creatures)
         {
-            if (creature.Status == CreatureStatus.Dead &&
-                creature.RespawnAt <= payload.ProcessedAt &&
-                !(stonehavenAssaultActive && creature.FactionId == LivingRealmsDbContext.DarkwoodClanId))
+            if (creature.FactionId is null &&
+                creature.Status == CreatureStatus.Dead &&
+                creature.RespawnAt <= payload.ProcessedAt)
             {
                 creature.Status = CreatureStatus.Alive;
                 creature.Health = creature.MaximumHealth;
@@ -805,6 +799,7 @@ public sealed partial class WorldSimulationService(
         Settlement settlement,
         IReadOnlyCollection<SettlementResident> residents,
         IReadOnlyCollection<Creature> creatures,
+        Dictionary<ResourceKind, FactionResource> factionResources,
         ConstructionProject stonehavenWall,
         ConstructionProject darkwoodPalisade)
     {
@@ -831,25 +826,33 @@ public sealed partial class WorldSimulationService(
         var vrakStone = 0;
         for (var hour = 0; hour < worldHours; hour++)
         {
+            var stonehavenReserve = Math.Max(16, settlement.Population * 2);
             var wallWork = ApplySimulatedProjectWork(
                 stonehavenWall,
-                nessaWorking ? 5 : 0,
-                dainWorking ? 4 : 0,
+                nessaWorking ? Math.Min(5, Math.Max(0, settlement.Wood - stonehavenReserve)) : 0,
+                dainWorking ? Math.Min(4, Math.Max(0, settlement.Stone - stonehavenReserve)) : 0,
                 "Nessa and Dain",
                 processedAt,
                 faction,
                 settlement);
+            settlement.Wood -= wallWork.Wood;
+            settlement.Stone -= wallWork.Stone;
             nessaWood += wallWork.Wood;
             dainStone += wallWork.Stone;
 
+            var darkwoodWood = factionResources[ResourceKind.Wood];
+            var darkwoodStone = factionResources[ResourceKind.Stone];
+            var darkwoodReserve = Math.Max(14, faction.Population * 2);
             var palisadeWork = ApplySimulatedProjectWork(
                 darkwoodPalisade,
-                skritWorking ? 6 : 0,
-                vrakWorking ? 3 : 0,
+                skritWorking ? (int)Math.Min(6, Math.Max(0, darkwoodWood.Amount - darkwoodReserve)) : 0,
+                vrakWorking ? (int)Math.Min(4, Math.Max(0, darkwoodStone.Amount - darkwoodReserve)) : 0,
                 "Skrit and Vrak",
                 processedAt,
                 faction,
                 settlement);
+            darkwoodWood.Amount -= palisadeWork.Wood;
+            darkwoodStone.Amount -= palisadeWork.Stone;
             skritWood += palisadeWork.Wood;
             vrakStone += palisadeWork.Stone;
         }
@@ -924,7 +927,9 @@ public sealed partial class WorldSimulationService(
             Title = completed
                 ? $"{project.Name} reached its final tier"
                 : $"{project.Name} reached level {project.CurrentLevel}",
-            Description = $"{workers} supplied the final materials through the persistent world simulation.",
+            Description =
+                $"{workers} delivered the final materials from their settlement or faction stores. " +
+                "The consumed timber and stone were removed from those stores before the project advanced.",
             RegionId = LivingRealmsDbContext.StonehavenValleyId,
             FactionId = project.FactionId,
             OccurredAt = processedAt,

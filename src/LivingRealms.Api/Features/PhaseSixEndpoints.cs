@@ -150,11 +150,16 @@ public static class PhaseSixEndpoints
             .Include(x => x.Structures)
             .SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodClanId, cancellationToken);
         var leader = await database.Creatures.AsNoTracking()
-            .SingleAsync(x => x.Id == LivingRealmsDbContext.GoblinChiefCreatureId, cancellationToken);
+            .Where(x => x.FactionId == faction.Id)
+            .OrderByDescending(x => x.Id == faction.LeaderCreatureId)
+            .ThenByDescending(x => x.Status == CreatureStatus.Alive && x.Health > 0)
+            .ThenByDescending(x => x.Leadership)
+            .ThenByDescending(x => x.Level)
+            .FirstAsync(cancellationToken);
         var settlement = await database.Settlements.AsNoTracking()
             .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId, cancellationToken);
         var stonehavenLeader = await database.SettlementResidents.AsNoTracking()
-            .SingleAsync(x => x.Id == LivingRealmsDbContext.CaptainRowanResidentId, cancellationToken);
+            .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenLeaderResidentId, cancellationToken);
         var livingStonehavenResidents = await database.SettlementResidents.AsNoTracking()
             .CountAsync(x => x.SettlementId == settlement.Id &&
                              x.Health > 0 &&
@@ -168,7 +173,7 @@ public static class PhaseSixEndpoints
                 cancellationToken);
         var raidReadyDarkwoodFighters = await database.Creatures.AsNoTracking()
             .CountAsync(x => x.FactionId == faction.Id &&
-                             x.Id != LivingRealmsDbContext.GoblinChiefCreatureId &&
+                             x.Id != faction.LeaderCreatureId &&
                              x.Role != "Raid Attacker" &&
                              x.Status == CreatureStatus.Alive &&
                              x.Health > 0,
@@ -267,11 +272,16 @@ public static class PhaseSixEndpoints
                 new SettlementLeaderResponse(
                     stonehavenLeader.Id,
                     stonehavenLeader.Name,
-                    "Warden of Stonehaven",
+                    "Reeve of Stonehaven",
                     stonehavenLeader.Role,
                     stonehavenLeader.Health,
                     stonehavenLeader.MaximumHealth,
-                    stonehavenLeader.Status.ToString())),
+                    stonehavenLeader.Status.ToString(),
+                    stonehavenLeader.PrimarySkill,
+                    stonehavenLeader.SkillLevel,
+                    stonehavenLeader.Trait,
+                    stonehavenLeader.IsMajor,
+                    stonehavenLeader.MemorySummary)),
             new WorldEventReadinessResponse(
                 new TriggerReadinessResponse(
                     "Darkwood raid on Stonehaven",
@@ -280,7 +290,7 @@ public static class PhaseSixEndpoints
                     darkwoodRaidActive,
                     darkwoodRaidActive
                         ? "ACTIVE: Darkwood is attacking Stonehaven now."
-                        : $"Darkwood attacks automatically when {WorldPopulationService.AutomaticDarkwoodRaidersRequired} living fighters, not counting Gorvak, are available. {raidReadyDarkwoodFighters} are ready now."),
+                        : $"Darkwood attacks automatically when {WorldPopulationService.AutomaticDarkwoodRaidersRequired} living fighters, not counting its current leader, are available. {raidReadyDarkwoodFighters} are ready now."),
                 new TriggerReadinessResponse(
                     "Stonehaven counterattack on Darkwood",
                     livingStonehavenResidents,
@@ -300,7 +310,7 @@ public static class PhaseSixEndpoints
 
     private static string FormatAssaultPhase(StonehavenAssaultStatus status) => status switch
     {
-        StonehavenAssaultStatus.Assembling => "Captain Rowan is assembling the counterattack at Stonehaven's gate.",
+        StonehavenAssaultStatus.Assembling => "Guard Captain Mira is assembling the counterattack at Stonehaven's gate.",
         StonehavenAssaultStatus.Marching => "Twenty Stonehaven soldiers and militia are marching to Darkwood.",
         StonehavenAssaultStatus.FightingGoblins => "Stonehaven's force is fighting the goblin defenders at their camp.",
         StonehavenAssaultStatus.AttackingCamp => "The goblins are down; Stonehaven's survivors are destroying the camp.",
@@ -380,7 +390,12 @@ public static class PhaseSixEndpoints
         string Role,
         int Health,
         int MaximumHealth,
-        string Status);
+        string Status,
+        string PrimarySkill,
+        int SkillLevel,
+        string Trait,
+        bool IsMajor,
+        string MemorySummary);
     public sealed record WorldEventReadinessResponse(
         TriggerReadinessResponse DarkwoodRaid,
         TriggerReadinessResponse StonehavenCounterattack);

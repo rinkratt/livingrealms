@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.3
+LIVING REALMS WINDOWS PLAYTEST 0.9.4
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,7 +35,7 @@ IMPORTANT CONTROLS
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
 
-BUILD 0.9.3
+BUILD 0.9.4
 - The 3x3 valley is divided into nine connected 96-by-96-meter regions that
   load the current cell and its directly connected neighbors.
 - A1 remains the Test Creatures area. A2 now contains Mirrorwater Lake and a
@@ -47,6 +47,15 @@ BUILD 0.9.3
 - At most one named resident can arrive per world day, and only when there is
   housing plus enough naturally produced food, timber, stone, and iron.
 - The Living World panel now identifies Stonehaven's housing and supplies.
+- Reeve Aldric Vale is Stonehaven's civil leader; Mira commands the guard.
+- Mara Venn is preserved as the missing militia recruit from the concept lore.
+- Residents expose a persistent skill, level, trait, experience, importance,
+  and remembered history when players speak to them.
+- NPC builders consume the same stored materials shown in the Chronicle.
+- Named Darkwood members remain dead after permanent defeat. If the leader
+  falls, the strongest living candidate takes command and the succession is
+  recorded in world history.
+- World time is explicit: one real minute equals one world minute.
 
 BUILD 0.9.1
 - Players can press F9 or use the Realm Menu to report bugs and request
@@ -54,10 +63,10 @@ BUILD 0.9.1
 
 BUILD 0.9.0
 - Reset returns Stonehaven to 8 healthy residents and Darkwood to 7 goblins.
-- The Chronicle clearly separates both factions, names Captain Rowan as
-  Stonehaven's Warden, and explains the population and event-readiness counts.
+- The Chronicle clearly separates both factions and explains the population and
+  event-readiness counts. Stonehaven's leader identity was superseded in 0.9.4.
 - Darkwood automatically raids when 15 raid-ready goblins are available.
-- A completed level 3 Darkwood camp causes Captain Rowan to assemble 20 named
+- A completed level 3 Darkwood camp causes the Guard Captain to assemble 20 named
   Stonehaven soldiers and militia. They march to Darkwood, fight the goblins,
   and then damage the camp until it loses one level or the force is defeated.
 - Both battle types are persistent and visible in the Chronicle and game world.

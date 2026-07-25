@@ -59,6 +59,12 @@ public partial class SettlementNpc : CharacterBody3D
     public int MaximumHealth { get; private set; }
     public bool CanFight { get; private set; }
     public IReadOnlyCollection<string> Skills { get; private set; } = [];
+    public string PrimarySkill { get; private set; } = string.Empty;
+    public int SkillLevel { get; private set; }
+    public string Trait { get; private set; } = string.Empty;
+    public long Experience { get; private set; }
+    public bool IsMajor { get; private set; }
+    public string MemorySummary { get; private set; } = string.Empty;
     public bool AiEnabled { get; set; } = true;
     public bool IsAvailable => !Status.Equals("Dead", StringComparison.OrdinalIgnoreCase) &&
                                !Status.Equals("Missing", StringComparison.OrdinalIgnoreCase);
@@ -202,6 +208,12 @@ public partial class SettlementNpc : CharacterBody3D
         Status = data.Status;
         CanFight = data.CanFight;
         Skills = data.Skills;
+        PrimarySkill = data.PrimarySkill;
+        SkillLevel = data.SkillLevel;
+        Trait = data.Trait;
+        Experience = data.Experience;
+        IsMajor = data.IsMajor;
+        MemorySummary = data.MemorySummary;
         Activity = data.Activity;
         Dialogue = data.Dialogue;
         _scheduledTargetPosition = _pathfinder.GetNearestWalkablePosition(data.Position);
@@ -260,8 +272,10 @@ public partial class SettlementNpc : CharacterBody3D
             tween.TweenProperty(_visualRoot, "scale", Vector3.One * 1.07f, 0.09);
             tween.TweenProperty(_visualRoot, "scale", Vector3.One, 0.12);
         }
+        var importance = IsMajor ? "Major resident" : "Resident";
         return $"{ResidentName}, {Role}: \"{Dialogue}\"  •  {Activity}  •  " +
-               $"Status: {Status}  •  Skills: {string.Join(", ", Skills)}";
+               $"Status: {Status}  •  {importance}  •  {PrimarySkill} level {SkillLevel}  •  " +
+               $"Trait: {Trait}  •  Memory: {MemorySummary}";
     }
 
     public void SetRaidCombatTarget(CombatCreature? target)
@@ -1015,11 +1029,11 @@ public partial class SettlementNpc : CharacterBody3D
 
     private ResidentVisualProfile ResolveVisualProfile() => ResidentName switch
     {
-        "Captain Rowan" => new(false, 1.04f, new Color("ad795b"), new Color("302117"), new Color("23364d"), new Color("651f1c"), new Color("d4a447")),
+        "Reeve Aldric Vale" => new(false, 1.04f, new Color("ad795b"), new Color("302117"), new Color("23364d"), new Color("651f1c"), new Color("d4a447")),
         "Mira" => new(true, 0.98f, new Color("a97458"), new Color("3b251e"), new Color("30465e"), new Color("56302b"), new Color("b5bec4")),
         "Tomas" => new(false, 1.0f, new Color("9b684d"), new Color("241b17"), new Color("34485c"), new Color("3b2921"), new Color("aeb8bf")),
         "Brann" => new(false, 1.08f, new Color("8e5b43"), new Color("2a1a14"), new Color("49342a"), new Color("6f4327"), new Color("b27745")),
-        "Mara" => new(true, 0.98f, new Color("ae7658"), new Color("4a271b"), new Color("6c2420"), new Color("d2bd96"), new Color("d8a94b")),
+        "Mara Venn" => new(true, 0.98f, new Color("ae7658"), new Color("4a271b"), new Color("6c2420"), new Color("d2bd96"), new Color("d8a94b")),
         "Elowen" => new(true, 0.96f, new Color("a86f55"), new Color("68462b"), new Color("355c43"), new Color("d7cfad"), new Color("c4a85c")),
         "Oren" => new(false, 1.0f, new Color("9a674b"), new Color("37251c"), new Color("744025"), new Color("403129"), new Color("d2a85d")),
         "Nessa" => new(true, 0.94f, new Color("a97559"), new Color("2d211c"), new Color("55415f"), new Color("80704e"), new Color("c1a578")),

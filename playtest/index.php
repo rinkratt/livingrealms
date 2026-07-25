@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $playerAccess = player_access();
-$downloadPath = dirname(__DIR__) . '/downloads/LivingRealms-Playtest-Windows-0.9.3.zip';
+$downloadPath = dirname(__DIR__) . '/downloads/LivingRealms-Playtest-Windows-0.9.4.zip';
 $downloadReady = is_file($downloadPath);
 $downloadSize = $downloadReady ? number_format((float)filesize($downloadPath) / 1048576, 1) . ' MB' : null;
 promo_start(
@@ -75,12 +75,12 @@ promo_start(
 ?>
 <section class="section"><div class="section-inner signup-layout">
 <div>
-<p class="eyebrow">Build 0.9.3</p><h2>A shared world is waiting.</h2>
+<p class="eyebrow">Build 0.9.4</p><h2>A shared world is waiting.</h2>
 <p class="lead">Construction, inventory, gathering, combat, and character progress are saved on the live Living Realms server.</p>
 <p>Multiple testers can use separate accounts and affect the same world. This build does not yet display other players in real time; live player presence and synchronized multiplayer combat are a later networking step.</p>
 <h3>Installation</h3><ol><li>Create a free player account or sign in on this page.</li><li>Download the Windows ZIP.</li><li>Extract the entire ZIP to a writable folder.</li><li>Keep all extracted files together and run <strong>LivingRealms.exe</strong>.</li><li>Sign in to the game with the same email and password.</li></ol>
-<h3>What changed in 0.9.3</h3><p>Mirrorwater Lake has moved south with a corrected dock approach, Irondeep is now a rocky working mine instead of a square placeholder, and the farmhouses face their central road. The camera is blocked from passing below the terrain. Named workers now keep Stonehaven's wall and Darkwood's fort progressing through server time even while no player has the client open.</p>
-<h3>Automatic updates</h3><p>Build 0.9.3 checks for future builds when it starts. New packages are downloaded from living-realms.com, checksum-verified, installed, and relaunched automatically.</p>
+<h3>What changed in 0.9.4</h3><p>This alignment update gives Stonehaven a lore-safe civil leader and Guard Captain, makes every resident carry a persistent skill, trait, experience record, importance, and memory, and makes construction consume the real stores shown by the Chronicle. Darkwood leaders and clan members no longer return unchanged after permanent defeat: a surviving named goblin succeeds a fallen leader and the event becomes world history.</p>
+<h3>Automatic updates</h3><p>Build 0.9.4 checks for future builds when it starts. New packages are downloaded from living-realms.com, checksum-verified, installed, and relaunched automatically.</p>
 <h3>Sharing screenshots</h3><p>Press <strong>F12</strong> while playing to save a PNG in <strong>Pictures\Living Realms</strong>. Press <strong>F10</strong> to release or recapture the mouse without pausing the realm.</p>
 <p class="form-note">Early playtest builds are not yet code-signed, so Windows may display an unrecognized-app warning. Only use the package from living-realms.com.</p>
 </div>

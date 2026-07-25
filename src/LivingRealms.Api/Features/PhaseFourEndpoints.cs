@@ -107,6 +107,7 @@ public static class PhaseFourEndpoints
         HttpContext context,
         LivingRealmsDbContext database,
         RaidSimulationService raidSimulation,
+        FactionLeadershipService factionLeadership,
         ILoggerFactory loggerFactory)
     {
         if (!IsValidWorldPosition(request.PlayerPosition.X, request.PlayerPosition.Y, request.PlayerPosition.Z) ||
@@ -144,7 +145,10 @@ public static class PhaseFourEndpoints
         RespawnCreatureIfReady(creature, now);
         if (creature.Status != CreatureStatus.Alive)
         {
-            return Results.Conflict(new ErrorResponse("That creature is defeated and has not respawned yet."));
+            return Results.Conflict(new ErrorResponse(
+                creature.FactionId is null
+                    ? "That creature is defeated and has not respawned yet."
+                    : "That named faction member is no longer active in the world."));
         }
 
         var cooldown = selected.Archetype == CharacterArchetype.Vanguard ? 0.55 : 0.75;
@@ -190,11 +194,10 @@ public static class PhaseFourEndpoints
         var experienceGained = 0;
         var leveledUp = false;
         RaidContributionResult? raidContribution = null;
+        FactionDefeatResult? factionDefeat = null;
         IReadOnlyCollection<PhaseFiveEndpoints.LootResponse> loot = [];
         if (defeated)
         {
-            creature.Status = CreatureStatus.Dead;
-            creature.RespawnAt = now.AddSeconds(Math.Max(15, creature.Species.RespawnSeconds));
             creature.PositionX = creature.SpawnX;
             creature.PositionY = creature.SpawnY;
             creature.PositionZ = creature.SpawnZ;
@@ -207,6 +210,14 @@ public static class PhaseFourEndpoints
                 selected.Id,
                 now,
                 context.RequestAborted);
+            if (raidContribution is null)
+            {
+                factionDefeat = await factionLeadership.ResolvePersistentDefeatAsync(
+                    creature,
+                    now,
+                    selected.Id,
+                    cancellationToken: context.RequestAborted);
+            }
         }
 
         await database.SaveChangesAsync(context.RequestAborted);
@@ -242,6 +253,10 @@ public static class PhaseFourEndpoints
             message += raidContribution.Status == SettlementRaidStatus.AttackersWon
                 ? " Another surviving raider was cleared from Stonehaven."
                 : $" Stonehaven gained {raidContribution.ContributionGained} raid strength from the victory.";
+        }
+        if (!string.IsNullOrWhiteSpace(factionDefeat?.ChronicleSummary))
+        {
+            message += $" {factionDefeat.ChronicleSummary}";
         }
         return Results.Ok(new CombatResponse(
             ToCharacterResponse(selected),
@@ -382,7 +397,9 @@ public static class PhaseFourEndpoints
     private static async Task<IResult> SettlementDefenseAttackAsync(
         SettlementDefenseAttackRequest request,
         HttpContext context,
-        LivingRealmsDbContext database)
+        LivingRealmsDbContext database,
+        RaidSimulationService raidSimulation,
+        FactionLeadershipService factionLeadership)
     {
         if (!IsValidWorldPosition(
                 request.ResidentPosition.X,
@@ -399,7 +416,8 @@ public static class PhaseFourEndpoints
             });
         }
 
-        if (await GetSelectedCharacterAsync(context, database) is null)
+        var selected = await GetSelectedCharacterAsync(context, database);
+        if (selected is null)
         {
             return Results.Conflict(new ErrorResponse("Select a character before resolving Stonehaven defense combat."));
         }
@@ -452,23 +470,40 @@ public static class PhaseFourEndpoints
         creature.UpdatedAt = now;
         creature.LastProcessedAt = now;
         var defeated = creature.Health == 0;
+        FactionDefeatResult? factionDefeat = null;
         if (defeated)
         {
-            creature.Status = CreatureStatus.Dead;
-            creature.RespawnAt = now.AddSeconds(Math.Max(15, creature.Species.RespawnSeconds));
             creature.PositionX = creature.SpawnX;
             creature.PositionY = creature.SpawnY;
             creature.PositionZ = creature.SpawnZ;
+            var raidContribution = await raidSimulation.RegisterPlayerDefeatAsync(
+                creature,
+                selected.Id,
+                now,
+                context.RequestAborted);
+            if (raidContribution is null)
+            {
+                factionDefeat = await factionLeadership.ResolvePersistentDefeatAsync(
+                    creature,
+                    now,
+                    selected.Id,
+                    cancellationToken: context.RequestAborted);
+            }
         }
 
         await database.SaveChangesAsync(context.RequestAborted);
+        var message = defeated
+            ? $"{resident.Name} defeated {creature.Name} in defense of Stonehaven."
+            : $"{resident.Name} struck {creature.Name} for {damage} damage.";
+        if (!string.IsNullOrWhiteSpace(factionDefeat?.ChronicleSummary))
+        {
+            message += $" {factionDefeat.ChronicleSummary}";
+        }
         return Results.Ok(new SettlementDefenseResponse(
             ToCreatureResponse(creature),
             damage,
             defeated,
-            defeated
-                ? $"{resident.Name} defeated {creature.Name} in defense of Stonehaven."
-                : $"{resident.Name} struck {creature.Name} for {damage} damage."));
+            message));
     }
 
     private static async Task<Character?> GetSelectedCharacterAsync(
@@ -501,6 +536,7 @@ public static class PhaseFourEndpoints
         var defeated = await database.Creatures
             .Include(x => x.Species)
             .Where(x => x.RegionId == LivingRealmsDbContext.StonehavenValleyId &&
+                        x.FactionId == null &&
                         x.Status == CreatureStatus.Dead &&
                         x.RespawnAt != null &&
                         x.RespawnAt <= now)
@@ -518,6 +554,11 @@ public static class PhaseFourEndpoints
 
     private static void RespawnCreatureIfReady(Creature creature, DateTimeOffset now)
     {
+        if (creature.FactionId is not null)
+        {
+            creature.RespawnAt = null;
+            return;
+        }
         if (creature.Status != CreatureStatus.Dead ||
             creature.RespawnAt is null ||
             creature.RespawnAt > now)
