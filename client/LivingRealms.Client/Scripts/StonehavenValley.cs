@@ -4,7 +4,7 @@ namespace LivingRealms.Client;
 
 public partial class StonehavenValley : Node3D
 {
-    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.7";
+    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.8";
     private const float KnockoutProtectionDuration = 8.0f;
     private const float TargetCycleRadius = 32.0f;
     private const float WorldGridSize = 96.0f;
@@ -28,6 +28,7 @@ public partial class StonehavenValley : Node3D
     private static readonly Color Red = new("8e2119");
     private static readonly Color Ink = new("101116");
     private static readonly Color Parchment = new("d8cfbb");
+    private static readonly string[] DragonAnimationModes = ["Idle", "Walk", "Run", "Fly"];
     private static readonly string[,] WorldGridNames =
     {
         { "Darkwood Reach", "Northwatch Moor", "Irondeep Mining District" },
@@ -2825,11 +2826,43 @@ public partial class StonehavenValley : Node3D
         AddWorldNode(dragonRoot, WillowmereDragonRoostCenter);
 
         var animationPlayer = FindAnimationPlayer(dragonModel);
-        if (animationPlayer is not null && animationPlayer.HasAnimation("Idle"))
+        var animationModes = DragonAnimationModes
+            .Where(mode => animationPlayer?.HasAnimation(mode) == true)
+            .ToArray();
+        Label3D? animationModeLabel = null;
+        if (animationPlayer is not null && animationModes.Length > 0)
         {
-            var idle = animationPlayer.GetAnimation("Idle");
-            idle.LoopMode = Animation.LoopModeEnum.Linear;
-            animationPlayer.Autoplay = "Idle";
+            foreach (var mode in animationModes)
+            {
+                animationPlayer.GetAnimation(mode).LoopMode = Animation.LoopModeEnum.Linear;
+            }
+            animationPlayer.Play(animationModes[0]);
+
+            var animationIndex = 0;
+            var animationTimer = new Godot.Timer
+            {
+                Name = "DragonAnimationReviewTimer",
+                WaitTime = 7.0,
+                OneShot = false,
+                Autostart = true
+            };
+            animationTimer.Timeout += () =>
+            {
+                if (!IsInstanceValid(animationPlayer))
+                {
+                    return;
+                }
+
+                animationIndex = (animationIndex + 1) % animationModes.Length;
+                var nextMode = animationModes[animationIndex];
+                animationPlayer.Play(nextMode, 0.35);
+                if (IsInstanceValid(animationModeLabel))
+                {
+                    animationModeLabel!.Text =
+                        $"ANIMATION REVIEW: {nextMode.ToUpperInvariant()}  -  IDLE / WALK / RUN / FLY";
+                }
+            };
+            dragonRoot.AddChild(animationTimer);
         }
 
         AddInvisibleStaticBox(
@@ -2842,6 +2875,12 @@ public partial class StonehavenValley : Node3D
             WillowmereDragonRoostCenter + new Vector3(0, 6.2f, -9.0f),
             30,
             new Color("d7be73"));
+        animationModeLabel = AddLabel(
+            "WillowmereDragonAnimationMode",
+            $"ANIMATION REVIEW: {(animationModes.FirstOrDefault() ?? "UNAVAILABLE").ToUpperInvariant()}  -  IDLE / WALK / RUN / FLY",
+            WillowmereDragonRoostCenter + new Vector3(0, 4.7f, -9.0f),
+            20,
+            new Color("d66a4a"));
         AddLabel(
             "WillowmereDragonCredit",
             "BGE DRAGON 2.0 BY 3DHAUPT  -  CC-BY",
@@ -3989,9 +4028,9 @@ public partial class StonehavenValley : Node3D
         };
     }
 
-    private void AddLabel(string name, string text, Vector3 position, int fontSize, Color color)
+    private Label3D AddLabel(string name, string text, Vector3 position, int fontSize, Color color)
     {
-        AddWorldNode(new Label3D
+        var label = new Label3D
         {
             Name = name,
             Text = text,
@@ -4002,7 +4041,9 @@ public partial class StonehavenValley : Node3D
             OutlineModulate = new Color(0, 0, 0, 0.9f),
             Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
             NoDepthTest = false
-        }, position);
+        };
+        AddWorldNode(label, position);
+        return label;
     }
 
     private void BuildInterface()

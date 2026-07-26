@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.7
+LIVING REALMS WINDOWS PLAYTEST 0.9.8
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,16 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.8
+- Replaces the fragile single-node gameplay request path so the persistent
+  creature roster reliably reaches the world after character selection.
+- Retries the first creature load three times and reports the loaded roster
+  count instead of leaving "Loading persistent creatures..." on screen.
+- Saves large creature rosters in server-safe batches so population growth does
+  not make movement autosaves fail.
+- Cycles the C1 review dragon through Idle, Walk, Run, and Fly every seven
+  seconds and displays the current animation above the roost.
 
 BUILD 0.9.7
 - Adds a full-size, animated dragon model-review roost to Willowmere in grid C1.

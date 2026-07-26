@@ -3,19 +3,25 @@ using System.Text.Json;
 using System.Security.Cryptography;
 using Godot;
 using NetHttpClient = System.Net.Http.HttpClient;
+using NetHttpMethod = System.Net.Http.HttpMethod;
+using NetHttpRequestMessage = System.Net.Http.HttpRequestMessage;
+using NetStringContent = System.Net.Http.StringContent;
 
 namespace LivingRealms.Client;
 
 public partial class Main : Control
 {
-    private const string ClientVersion = "0.9.7";
+    private const string ClientVersion = "0.9.8";
     private const string UpdateManifestUrl = "https://living-realms.com/downloads/windows-version.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
-    private HttpRequest _httpRequest = null!;
+    private readonly NetHttpClient _apiClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(45)
+    };
     private ColorRect _background = null!;
     private Control _page = null!;
     private PanelContainer _authPanel = null!;
@@ -43,14 +49,13 @@ public partial class Main : Control
     private CharacterResponse? _selectedCharacter;
     private StonehavenValley? _world;
     private readonly SemaphoreSlim _worldApiGate = new(1, 1);
-    private readonly SemaphoreSlim _httpRequestGate = new(1, 1);
     private bool _quitting;
     private bool _isAdministrator;
 
     public override void _Ready()
     {
         GetTree().AutoAcceptQuit = false;
-        _httpRequest = GetNode<HttpRequest>("HttpRequest");
+        _apiClient.DefaultRequestHeaders.UserAgent.ParseAdd($"LivingRealms/{ClientVersion}");
         _background = GetNode<ColorRect>("Background");
         _page = GetNode<Control>("Page");
         _authPanel = GetNode<PanelContainer>("Page/Layout/Content/AuthPanel");
@@ -368,6 +373,8 @@ public partial class Main : Control
         await _worldApiGate.WaitAsync();
         try
         {
+            residentPosition = SanitizeNetworkPosition(residentPosition);
+            creaturePosition = SanitizeNetworkPosition(creaturePosition);
             var payload = JsonSerializer.Serialize(new SettlementDefenseAttackRequest(
                 residentId,
                 creatureId,
@@ -626,13 +633,32 @@ public partial class Main : Control
 
     private async Task InitializeWorldAsync(StonehavenValley world)
     {
-        // A single HttpRequest node cannot process concurrent requests. Keep the
-        // initial roster loads ordered so creatures are always materialized before
-        // optional world panels and development data.
-        await LoadWorldCreaturesAsync();
+        var creaturesLoaded = false;
+        for (var attempt = 1; attempt <= 3 && ReferenceEquals(_world, world); attempt++)
+        {
+            creaturesLoaded = await LoadWorldCreaturesAsync(world);
+            if (creaturesLoaded)
+            {
+                break;
+            }
+
+            if (attempt < 3)
+            {
+                world.SetCombatStatus(
+                    $"Creature roster did not arrive. Retrying ({attempt}/3)...",
+                    true);
+                await ToSignal(GetTree().CreateTimer(1.25), Godot.Timer.SignalName.Timeout);
+            }
+        }
         if (!ReferenceEquals(_world, world))
         {
             return;
+        }
+        if (!creaturesLoaded)
+        {
+            world.SetCombatStatus(
+                "Creatures could not be loaded after three attempts. The automatic world refresh will keep retrying.",
+                true);
         }
         await LoadWorldResidentsAsync();
         if (!ReferenceEquals(_world, world))
@@ -780,32 +806,41 @@ public partial class Main : Control
             return true;
         }
 
-        var payload = JsonSerializer.Serialize(new CreaturePositionsRequest(
-            positions.Select(position => new CreaturePositionRequest(
-                position.Id,
-                position.Position.X,
-                position.Position.Y,
-                position.Position.Z)).ToArray()));
-        var response = await SendAsync(
-            "/api/v1/regions/stonehaven-valley/creatures/positions",
-            Godot.HttpClient.Method.Put,
-            payload,
-            authenticated: true);
-        return response.IsSuccess;
+        foreach (var batch in positions.Chunk(32))
+        {
+            var payload = JsonSerializer.Serialize(new CreaturePositionsRequest(
+                batch.Select(position => new CreaturePositionRequest(
+                    position.Id,
+                    position.Position.X,
+                    position.Position.Y,
+                    position.Position.Z)).ToArray()));
+            var response = await SendAsync(
+                "/api/v1/regions/stonehaven-valley/creatures/positions",
+                Godot.HttpClient.Method.Put,
+                payload,
+                authenticated: true);
+            if (!response.IsSuccess)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
-    private async Task LoadWorldCreaturesAsync()
+    private async Task<bool> LoadWorldCreaturesAsync(StonehavenValley? expectedWorld = null)
     {
-        var world = _world;
-        if (world is null)
+        var world = expectedWorld ?? _world;
+        if (world is null || !ReferenceEquals(_world, world))
         {
-            return;
+            return false;
         }
 
         await _worldApiGate.WaitAsync();
         try
         {
-            await LoadWorldCreaturesCoreAsync(world);
+            return ReferenceEquals(_world, world) &&
+                   await LoadWorldCreaturesCoreAsync(world);
         }
         finally
         {
@@ -830,9 +865,13 @@ public partial class Main : Control
         }
 
         var creatures = JsonSerializer.Deserialize<CreatureResponse[]>(response.Body, JsonOptions);
-        if (creatures is null)
+        if (creatures is null || creatures.Length == 0)
         {
-            world.SetCombatStatus("The server returned an unreadable creature roster.", true);
+            world.SetCombatStatus(
+                creatures is null
+                    ? "The server returned an unreadable creature roster."
+                    : "The server returned an empty creature roster.",
+                true);
             return false;
         }
 
@@ -851,6 +890,9 @@ public partial class Main : Control
             return false;
         }
 
+        world.SetCombatStatus(
+            $"Loaded {creatures.Length} persistent creatures, including the A1 training yard and Darkwood camp.",
+            false);
         return true;
     }
 
@@ -933,6 +975,8 @@ public partial class Main : Control
         await _worldApiGate.WaitAsync();
         try
         {
+            playerPosition = SanitizeNetworkPosition(playerPosition);
+            creaturePosition = SanitizeNetworkPosition(creaturePosition);
             var payload = JsonSerializer.Serialize(new CombatRequest(
                 creatureId,
                 new PositionRequest(playerPosition.X, playerPosition.Y, playerPosition.Z),
@@ -1142,6 +1186,11 @@ public partial class Main : Control
         await _worldApiGate.WaitAsync();
         try
         {
+            playerPosition = SanitizeNetworkPosition(playerPosition);
+            if (creaturePosition is not null)
+            {
+                creaturePosition = SanitizeNetworkPosition(creaturePosition.Value);
+            }
             var creature = creaturePosition is null
                 ? null
                 : new PositionRequest(creaturePosition.Value.X, creaturePosition.Value.Y, creaturePosition.Value.Z);
@@ -1735,36 +1784,61 @@ public partial class Main : Control
         string body,
         bool authenticated)
     {
-        await _httpRequestGate.WaitAsync();
         try
         {
-            var headers = new List<string> { "Content-Type: application/json" };
+            using var request = new NetHttpRequestMessage(
+                ToNetHttpMethod(method),
+                _apiBaseUrl + path);
             if (authenticated && !string.IsNullOrWhiteSpace(_token))
             {
-                headers.Add($"Authorization: Bearer {_token}");
+                request.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _token);
             }
-
-            var error = _httpRequest.Request(_apiBaseUrl + path, [.. headers], method, body);
-            if (error != Error.Ok)
+            if (!string.IsNullOrEmpty(body))
             {
-                return new ApiResponse(0, $"Unable to start the request: {error}");
+                request.Content = new NetStringContent(body, Encoding.UTF8, "application/json");
             }
 
-            var result = await ToSignal(_httpRequest, HttpRequest.SignalName.RequestCompleted);
-            var requestResult = (long)result[0];
-            var statusCode = (long)result[1];
-            var responseBody = Encoding.UTF8.GetString((byte[])result[3]);
-            if (requestResult != (long)HttpRequest.Result.Success)
-            {
-                return new ApiResponse(0, $"The API could not be reached (request result {requestResult}).");
-            }
-
-            return new ApiResponse(statusCode, responseBody);
+            using var response = await _apiClient.SendAsync(request);
+            var responseBody = await response.Content.ReadAsStringAsync();
+            return new ApiResponse((long)response.StatusCode, responseBody);
         }
-        finally
+        catch (TaskCanceledException)
         {
-            _httpRequestGate.Release();
+            return new ApiResponse(0, "The Living Realms server request timed out.");
         }
+        catch (System.Net.Http.HttpRequestException exception)
+        {
+            return new ApiResponse(0, $"The Living Realms server could not be reached: {exception.Message}");
+        }
+        catch (InvalidOperationException exception)
+        {
+            return new ApiResponse(0, $"The Living Realms request was invalid: {exception.Message}");
+        }
+    }
+
+    private static NetHttpMethod ToNetHttpMethod(Godot.HttpClient.Method method) => method switch
+    {
+        Godot.HttpClient.Method.Get => NetHttpMethod.Get,
+        Godot.HttpClient.Method.Post => NetHttpMethod.Post,
+        Godot.HttpClient.Method.Put => NetHttpMethod.Put,
+        Godot.HttpClient.Method.Delete => NetHttpMethod.Delete,
+        Godot.HttpClient.Method.Patch => NetHttpMethod.Patch,
+        Godot.HttpClient.Method.Head => NetHttpMethod.Head,
+        _ => throw new InvalidOperationException($"HTTP method {method} is not supported.")
+    };
+
+    private static Vector3 SanitizeNetworkPosition(Vector3 position)
+    {
+        if (!position.IsFinite())
+        {
+            return Vector3.Zero;
+        }
+
+        return new Vector3(
+            Mathf.Clamp(position.X, -139.0f, 139.0f),
+            Mathf.Clamp(position.Y, -1.0f, 18.0f),
+            Mathf.Clamp(position.Z, -139.0f, 139.0f));
     }
 
     private void ShowCharacter(CharacterResponse character)

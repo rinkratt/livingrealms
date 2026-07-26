@@ -347,6 +347,3 @@ custom_minimum_size = Vector2(0, 24)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.78, 0.14, 0.09, 1)
 horizontal_alignment = 1
-
-[node name="HttpRequest" type="HTTPRequest" parent="."]
-timeout = 15.0

@@ -37,14 +37,40 @@ func _run_verification() -> void:
 		return
 
 	var player := _find_animation_player(dragon)
-	if player == null or not player.has_animation("Idle"):
-		push_error("The C1 dragon Idle animation is unavailable.")
+	if player == null:
+		push_error("The C1 dragon AnimationPlayer is unavailable.")
 		quit(4)
 		return
 
+	var required_modes := ["Idle", "Walk", "Run", "Fly"]
+	for mode in required_modes:
+		if not player.has_animation(mode):
+			push_error("The C1 dragon %s animation is unavailable." % mode)
+			quit(4)
+			return
+
+	var timer := dragon.find_child("DragonAnimationReviewTimer", true, false) as Timer
+	if timer == null:
+		push_error("The C1 dragon animation review timer is unavailable.")
+		quit(4)
+		return
+
+	var observed_modes: Array[String] = [player.current_animation]
+	for expected_mode in ["Walk", "Run", "Fly", "Idle"]:
+		timer.emit_signal("timeout")
+		await process_frame
+		observed_modes.append(player.current_animation)
+		if player.current_animation != expected_mode:
+			push_error(
+				"The dragon animation cycle expected %s but played %s." %
+				[expected_mode, player.current_animation]
+			)
+			quit(4)
+			return
+
 	print(
-		"DRAGON_C1_READY position=%s animation=%s playing=%s" %
-		[dragon.global_position, player.current_animation, player.is_playing()]
+		"DRAGON_C1_READY position=%s modes=%s playing=%s" %
+		[dragon.global_position, ",".join(observed_modes), player.is_playing()]
 	)
 
 	var args := OS.get_cmdline_user_args()
