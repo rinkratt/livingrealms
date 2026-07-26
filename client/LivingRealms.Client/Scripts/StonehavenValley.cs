@@ -721,7 +721,10 @@ public partial class StonehavenValley : Node3D
         var owner = normalized is "skrit" or "vrak" ? "Darkwood" : "Stonehaven";
         var kind = normalized is "nessa" or "skrit" ? "Wood" : "Stone";
         var node = _resourceNodes.Values
-            .Where(candidate => candidate.IsAvailable &&
+            .Where(candidate => IsInstanceValid(candidate) &&
+                                candidate.IsInsideTree() &&
+                                !candidate.IsQueuedForDeletion() &&
+                                candidate.IsAvailable &&
                                 candidate.ResourceOwnerName.Equals(owner, StringComparison.OrdinalIgnoreCase) &&
                                 candidate.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase))
             .OrderBy(candidate => HorizontalDistance(candidate.GlobalPosition,
@@ -1420,15 +1423,15 @@ public partial class StonehavenValley : Node3D
 
             var creature = new CombatCreature { Name = $"Creature-{normalizedData.Name}" };
             creature.Configure(normalizedData, _player, _pathfinder);
-            creature.AiEnabled = !_menuOpen && !_inventoryOpen && !_worldOpen;
-            creature.PlayerTargetable = _knockoutProtectionSeconds <= 0;
-            creature.SetPlayerSelected(_selectedTargetId == normalizedData.Id);
-            creature.SetOverheadDetail(_isAdministrator && _showDetailedOverhead);
             creature.AttackPlayerRequested += OnCreatureAttackRequested;
             creature.RaidCombatPulse += OnRaidCombatPulse;
             creature.ResourceWorkPulse += OnResourceWorkPulse;
             _creatures[normalizedData.Id] = creature;
             AddChild(creature);
+            creature.AiEnabled = !_menuOpen && !_inventoryOpen && !_worldOpen;
+            creature.PlayerTargetable = _knockoutProtectionSeconds <= 0;
+            creature.SetPlayerSelected(_selectedTargetId == normalizedData.Id);
+            creature.SetOverheadDetail(_isAdministrator && _showDetailedOverhead);
         }
 
         if (removeMissing)
@@ -1516,13 +1519,13 @@ public partial class StonehavenValley : Node3D
 
             var resident = new SettlementNpc { Name = $"Resident-{data.Name}" };
             resident.Configure(data, _player, _pathfinder);
-            resident.AiEnabled = !_menuOpen && !_inventoryOpen && !_worldOpen;
-            resident.SetOverheadDetail(_isAdministrator && _showDetailedOverhead);
             resident.RaidCombatPulse += OnRaidCombatPulse;
             resident.ResourceWorkPulse += OnResourceWorkPulse;
             resident.SettlementDefenseAttackRequested += OnSettlementDefenseAttackRequested;
             _residents[data.Id] = resident;
             AddChild(resident);
+            resident.AiEnabled = !_menuOpen && !_inventoryOpen && !_worldOpen;
+            resident.SetOverheadDetail(_isAdministrator && _showDetailedOverhead);
         }
 
         UpdateRaidCombatAssignments();

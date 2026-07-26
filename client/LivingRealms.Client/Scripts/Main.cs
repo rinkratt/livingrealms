@@ -8,7 +8,7 @@ namespace LivingRealms.Client;
 
 public partial class Main : Control
 {
-    private const string ClientVersion = "0.9.5";
+    private const string ClientVersion = "0.9.6";
     private const string UpdateManifestUrl = "https://living-realms.com/downloads/windows-version.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -43,6 +43,7 @@ public partial class Main : Control
     private CharacterResponse? _selectedCharacter;
     private StonehavenValley? _world;
     private readonly SemaphoreSlim _worldApiGate = new(1, 1);
+    private readonly SemaphoreSlim _httpRequestGate = new(1, 1);
     private bool _quitting;
     private bool _isAdministrator;
 
@@ -620,13 +621,29 @@ public partial class Main : Control
         _background.Visible = false;
         _page.Visible = false;
         AddChild(world);
-        _ = LoadWorldCreaturesAsync();
-        _ = LoadWorldResidentsAsync();
-        _ = LoadInventoryAsync();
-        _ = LoadSkillsAsync();
-        _ = LoadWorldStateAsync();
-        _ = LoadDevelopmentStateAsync();
-        _ = LoadRaidStateAsync();
+        _ = InitializeWorldAsync(world);
+    }
+
+    private async Task InitializeWorldAsync(StonehavenValley world)
+    {
+        // A single HttpRequest node cannot process concurrent requests. Keep the
+        // initial roster loads ordered so creatures are always materialized before
+        // optional world panels and development data.
+        await LoadWorldCreaturesAsync();
+        if (!ReferenceEquals(_world, world))
+        {
+            return;
+        }
+        await LoadWorldResidentsAsync();
+        if (!ReferenceEquals(_world, world))
+        {
+            return;
+        }
+        await LoadInventoryAsync();
+        await LoadSkillsAsync();
+        await LoadWorldStateAsync();
+        await LoadDevelopmentStateAsync();
+        await LoadRaidStateAsync();
     }
 
     private async Task LoadDevelopmentStateAsync()
@@ -1718,28 +1735,36 @@ public partial class Main : Control
         string body,
         bool authenticated)
     {
-        var headers = new List<string> { "Content-Type: application/json" };
-        if (authenticated && !string.IsNullOrWhiteSpace(_token))
+        await _httpRequestGate.WaitAsync();
+        try
         {
-            headers.Add($"Authorization: Bearer {_token}");
-        }
+            var headers = new List<string> { "Content-Type: application/json" };
+            if (authenticated && !string.IsNullOrWhiteSpace(_token))
+            {
+                headers.Add($"Authorization: Bearer {_token}");
+            }
 
-        var error = _httpRequest.Request(_apiBaseUrl + path, [.. headers], method, body);
-        if (error != Error.Ok)
+            var error = _httpRequest.Request(_apiBaseUrl + path, [.. headers], method, body);
+            if (error != Error.Ok)
+            {
+                return new ApiResponse(0, $"Unable to start the request: {error}");
+            }
+
+            var result = await ToSignal(_httpRequest, HttpRequest.SignalName.RequestCompleted);
+            var requestResult = (long)result[0];
+            var statusCode = (long)result[1];
+            var responseBody = Encoding.UTF8.GetString((byte[])result[3]);
+            if (requestResult != (long)HttpRequest.Result.Success)
+            {
+                return new ApiResponse(0, $"The API could not be reached (request result {requestResult}).");
+            }
+
+            return new ApiResponse(statusCode, responseBody);
+        }
+        finally
         {
-            return new ApiResponse(0, $"Unable to start the request: {error}");
+            _httpRequestGate.Release();
         }
-
-        var result = await ToSignal(_httpRequest, HttpRequest.SignalName.RequestCompleted);
-        var requestResult = (long)result[0];
-        var statusCode = (long)result[1];
-        var responseBody = Encoding.UTF8.GetString((byte[])result[3]);
-        if (requestResult != (long)HttpRequest.Result.Success)
-        {
-            return new ApiResponse(0, $"The API could not be reached (request result {requestResult}).");
-        }
-
-        return new ApiResponse(statusCode, responseBody);
     }
 
     private void ShowCharacter(CharacterResponse character)

@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.5
+LIVING REALMS WINDOWS PLAYTEST 0.9.6
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,14 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.6
+- Fixes a startup request collision that could prevent every server creature from
+  appearing even though its live record and position were correct.
+- Loads the creature roster before the remaining world panels and serializes
+  server requests so no startup response is silently skipped.
+- Finishes adding creatures and residents to the active scene before enabling
+  their AI, targets, and overhead details.
 
 BUILD 0.9.5
 - Restores the five named training creatures to the marked A1 testing grounds.

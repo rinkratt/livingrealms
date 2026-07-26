@@ -251,7 +251,7 @@ public partial class SettlementNpc : CharacterBody3D
 
     public float DistanceToPlayer()
     {
-        if (!IsInstanceValid(_player))
+        if (!IsInsideTree() || !IsInstanceValid(_player) || !_player.IsInsideTree())
         {
             return float.MaxValue;
         }

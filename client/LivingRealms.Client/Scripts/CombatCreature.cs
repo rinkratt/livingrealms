@@ -841,7 +841,10 @@ public partial class CombatCreature : CharacterBody3D
 
     private void UpdateOverheadVisibility()
     {
-        if (!IsInstanceValid(_statusLabel) || !IsInstanceValid(_player))
+        if (!IsInsideTree() ||
+            !IsInstanceValid(_statusLabel) ||
+            !IsInstanceValid(_player) ||
+            !_player.IsInsideTree())
         {
             return;
         }
