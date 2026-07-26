@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.9
+LIVING REALMS WINDOWS PLAYTEST 0.9.10
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,12 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.10
+- Keeps collision floors active under persistent creatures on all nine grids,
+  preventing A1 training animals and Darkwood goblins from falling underground.
+- Recovers any creature that somehow drops below the playable terrain.
+- Adds a bright gold ground ring beneath the currently selected creature.
 
 BUILD 0.9.9
 - Adds Emberwing, a red dragon, and Nightveil, a black dragon to Willowmere.

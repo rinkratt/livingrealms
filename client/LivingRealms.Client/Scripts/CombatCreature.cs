@@ -9,6 +9,7 @@ public partial class CombatCreature : CharacterBody3D
     private Label3D _statusLabel = null!;
     private Label3D _healthBarLabel = null!;
     private Label3D _targetMarker = null!;
+    private MeshInstance3D _targetGroundRing = null!;
     private CollisionShape3D _collider = null!;
     private ThirdPersonPlayer _player = null!;
     private WorldPathfinder _pathfinder = null!;
@@ -176,6 +177,22 @@ public partial class CombatCreature : CharacterBody3D
         }
 
         var seconds = (float)delta;
+        if (GlobalPosition.Y < -1.5f)
+        {
+            var recoveryPosition = GlobalPosition.IsFinite()
+                ? new Vector3(
+                    Mathf.Clamp(GlobalPosition.X, -139.0f, 139.0f),
+                    0.08f,
+                    Mathf.Clamp(GlobalPosition.Z, -139.0f, 139.0f))
+                : _spawnPosition;
+            GlobalPosition = _pathfinder.GetNearestWalkablePosition(recoveryPosition);
+            Velocity = Vector3.Zero;
+            _stuckSeconds = 0;
+            _consecutiveStuckReplans = 0;
+            ResetProgressWatchdog();
+            InvalidatePath();
+            return;
+        }
         if (_failedWaypointSeconds > 0)
         {
             _failedWaypointSeconds = Mathf.Max(0, _failedWaypointSeconds - seconds);
@@ -862,6 +879,10 @@ public partial class CombatCreature : CharacterBody3D
         {
             _targetMarker.Visible = IsAlive && IsPlayerSelected;
         }
+        if (IsInstanceValid(_targetGroundRing))
+        {
+            _targetGroundRing.Visible = IsAlive && IsPlayerSelected;
+        }
     }
 
     private void UpdateHealthBar()
@@ -1057,6 +1078,29 @@ public partial class CombatCreature : CharacterBody3D
             Visible = false
         };
         AddChild(_targetMarker);
+        _targetGroundRing = new MeshInstance3D
+        {
+            Name = "PlayerTargetGroundRing",
+            Position = new Vector3(0, 0.055f, 0),
+            Mesh = new TorusMesh
+            {
+                InnerRadius = SpeciesKey == "forest-rat" ? 0.42f : IsBoss ? 1.25f : 0.72f,
+                OuterRadius = SpeciesKey == "forest-rat" ? 0.52f : IsBoss ? 1.42f : 0.86f,
+                Rings = 32,
+                RingSegments = 12
+            },
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = new Color("f0bd43"),
+                EmissionEnabled = true,
+                Emission = new Color("b86d18"),
+                EmissionEnergyMultiplier = 1.65f,
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded
+            },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = false
+        };
+        AddChild(_targetGroundRing);
         _visualRoot.Scale = GetVisualBaseScale();
     }
 

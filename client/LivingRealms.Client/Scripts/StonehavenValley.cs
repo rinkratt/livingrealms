@@ -4,7 +4,7 @@ namespace LivingRealms.Client;
 
 public partial class StonehavenValley : Node3D
 {
-    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.9";
+    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.10";
     private const float KnockoutProtectionDuration = 8.0f;
     private const float TargetCycleRadius = 32.0f;
     private const float WorldGridSize = 96.0f;
@@ -2416,7 +2416,8 @@ public partial class StonehavenValley : Node3D
                     (physicalRow - 1) * WorldGridSize);
                 var code = GetDisplayGridCode(physicalColumn, physicalRow);
                 AddStaticBox($"Grid{code}Floor", center,
-                    new Vector3(WorldGridSize, 1, WorldGridSize), new Color("2b3823"));
+                    new Vector3(WorldGridSize, 1, WorldGridSize), new Color("2b3823"),
+                    alwaysLoaded: true);
             }
         }
 
@@ -3934,7 +3935,12 @@ public partial class StonehavenValley : Node3D
         }
     }
 
-    private void AddStaticBox(string name, Vector3 position, Vector3 size, Color color)
+    private void AddStaticBox(
+        string name,
+        Vector3 position,
+        Vector3 size,
+        Color color,
+        bool alwaysLoaded = false)
     {
         var body = new StaticBody3D
         {
@@ -3943,7 +3949,14 @@ public partial class StonehavenValley : Node3D
             CollisionLayer = 1,
             CollisionMask = 2
         };
-        AddWorldNode(body, position);
+        if (alwaysLoaded)
+        {
+            AddChild(body);
+        }
+        else
+        {
+            AddWorldNode(body, position);
+        }
         if (position.Y + size.Y * 0.5f > 0.9f)
         {
             _pathObstacles.Add(WorldPathObstacle.FromBox(position, size));
