@@ -4,7 +4,7 @@ namespace LivingRealms.Client;
 
 public partial class StonehavenValley : Node3D
 {
-    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.8";
+    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.9";
     private const float KnockoutProtectionDuration = 8.0f;
     private const float TargetCycleRadius = 32.0f;
     private const float WorldGridSize = 96.0f;
@@ -28,7 +28,18 @@ public partial class StonehavenValley : Node3D
     private static readonly Color Red = new("8e2119");
     private static readonly Color Ink = new("101116");
     private static readonly Color Parchment = new("d8cfbb");
-    private static readonly string[] DragonAnimationModes = ["Idle", "Walk", "Run", "Fly"];
+    private static readonly Vector3[] DragonRoamingAnchors =
+    [
+        new(-112.0f, 0.12f, 104.0f),
+        new(0.0f, 0.12f, 116.0f),
+        new(112.0f, 0.12f, 100.0f),
+        new(-112.0f, 0.12f, 0.0f),
+        new(-42.0f, 0.12f, 34.0f),
+        new(65.0f, 0.12f, -8.0f),
+        new(-82.0f, 0.12f, -112.0f),
+        new(0.0f, 0.12f, -112.0f),
+        new(90.0f, 0.12f, -90.0f)
+    ];
     private static readonly string[,] WorldGridNames =
     {
         { "Darkwood Reach", "Northwatch Moor", "Irondeep Mining District" },
@@ -44,6 +55,7 @@ public partial class StonehavenValley : Node3D
     private readonly List<NaturalResourceTarget> _naturalResourceTargets = [];
     private readonly Dictionary<Guid, ConstructionProjectData> _constructionProjects = [];
     private readonly Dictionary<string, WorldSkillData> _skills = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<RoamingDragon> _roamingDragons = [];
     private readonly List<WorldPathObstacle> _pathObstacles = [];
     private readonly List<WorldPathObstacle> _constructionPathObstacles = [];
     private readonly Dictionary<string, Node3D> _worldRegionRoots = new(StringComparer.OrdinalIgnoreCase);
@@ -189,6 +201,7 @@ public partial class StonehavenValley : Node3D
         AddChild(_constructionRoot);
         BuildWorldPathfinder();
         SpawnPlayer();
+        SpawnRoamingDragons();
         BuildInterface();
         if (!_configured)
         {
@@ -2805,79 +2818,15 @@ public partial class StonehavenValley : Node3D
             AddWorldNode(boulder, boulder.Position);
         }
 
-        var dragonScene = GD.Load<PackedScene>(WillowmereDragonScenePath);
-        if (dragonScene is null)
-        {
-            GD.PushWarning($"Unable to load the Willowmere dragon model: {WillowmereDragonScenePath}");
-            return;
-        }
-
-        var dragonRoot = new Node3D
-        {
-            Name = "WillowmereDragonReview",
-            Position = WillowmereDragonRoostCenter + new Vector3(0, 0.12f, 2.0f),
-            Rotation = new Vector3(0, Mathf.DegToRad(24.0f), 0),
-            Scale = Vector3.One * 0.11f
-        };
-        var dragonModel = dragonScene.Instantiate<Node3D>();
-        dragonModel.Name = "DragonModel";
-        TuneDragonMaterials(dragonModel);
-        dragonRoot.AddChild(dragonModel);
-        AddWorldNode(dragonRoot, WillowmereDragonRoostCenter);
-
-        var animationPlayer = FindAnimationPlayer(dragonModel);
-        var animationModes = DragonAnimationModes
-            .Where(mode => animationPlayer?.HasAnimation(mode) == true)
-            .ToArray();
-        Label3D? animationModeLabel = null;
-        if (animationPlayer is not null && animationModes.Length > 0)
-        {
-            foreach (var mode in animationModes)
-            {
-                animationPlayer.GetAnimation(mode).LoopMode = Animation.LoopModeEnum.Linear;
-            }
-            animationPlayer.Play(animationModes[0]);
-
-            var animationIndex = 0;
-            var animationTimer = new Godot.Timer
-            {
-                Name = "DragonAnimationReviewTimer",
-                WaitTime = 7.0,
-                OneShot = false,
-                Autostart = true
-            };
-            animationTimer.Timeout += () =>
-            {
-                if (!IsInstanceValid(animationPlayer))
-                {
-                    return;
-                }
-
-                animationIndex = (animationIndex + 1) % animationModes.Length;
-                var nextMode = animationModes[animationIndex];
-                animationPlayer.Play(nextMode, 0.35);
-                if (IsInstanceValid(animationModeLabel))
-                {
-                    animationModeLabel!.Text =
-                        $"ANIMATION REVIEW: {nextMode.ToUpperInvariant()}  -  IDLE / WALK / RUN / FLY";
-                }
-            };
-            dragonRoot.AddChild(animationTimer);
-        }
-
-        AddInvisibleStaticBox(
-            "WillowmereDragonReviewCollision",
-            WillowmereDragonRoostCenter + new Vector3(0, 1.5f, -0.6f),
-            new Vector3(5.2f, 3.0f, 11.2f));
         AddLabel(
             "WillowmereDragonRoostLabel",
-            "C1  -  WILLOWMERE DRAGON ROOST\nDRAGON MODEL REVIEW  -  NON-HOSTILE",
+            "C1  -  WILLOWMERE DRAGON ROOST\nEMBERWING AND NIGHTVEIL  -  NON-HOSTILE",
             WillowmereDragonRoostCenter + new Vector3(0, 6.2f, -9.0f),
             30,
             new Color("d7be73"));
-        animationModeLabel = AddLabel(
-            "WillowmereDragonAnimationMode",
-            $"ANIMATION REVIEW: {(animationModes.FirstOrDefault() ?? "UNAVAILABLE").ToUpperInvariant()}  -  IDLE / WALK / RUN / FLY",
+        AddLabel(
+            "WillowmereDragonRoamingNotice",
+            "RED AND BLACK DRAGONS ROAM FREELY THROUGH ALL NINE GRIDS",
             WillowmereDragonRoostCenter + new Vector3(0, 4.7f, -9.0f),
             20,
             new Color("d66a4a"));
@@ -2889,23 +2838,79 @@ public partial class StonehavenValley : Node3D
             Parchment);
     }
 
-    private static AnimationPlayer? FindAnimationPlayer(Node node)
+    private void SpawnRoamingDragons()
     {
-        if (node is AnimationPlayer animationPlayer)
+        var dragonScene = GD.Load<PackedScene>(WillowmereDragonScenePath);
+        if (dragonScene is null)
         {
-            return animationPlayer;
+            GD.PushWarning($"Unable to load the Willowmere dragon model: {WillowmereDragonScenePath}");
+            return;
         }
 
-        foreach (var child in node.GetChildren())
-        {
-            var found = FindAnimationPlayer(child);
-            if (found is not null)
-            {
-                return found;
-            }
-        }
+        AddRoamingDragon(
+            dragonScene,
+            "EmberwingRedDragon",
+            "Emberwing  -  Red Dragon",
+            new Color("8f1815"),
+            new Color("ef6652"),
+            WillowmereDragonRoostCenter + new Vector3(-5.5f, 0.12f, 2.0f),
+            seed: 41027,
+            initialTravelMode: 0,
+            initialAnchor: 0,
+            reverseRoute: false);
+        AddRoamingDragon(
+            dragonScene,
+            "NightveilBlackDragon",
+            "Nightveil  -  Black Dragon",
+            new Color("11131a"),
+            new Color("a9b4ca"),
+            WillowmereDragonRoostCenter + new Vector3(6.0f, 0.12f, 0.0f),
+            seed: 73141,
+            initialTravelMode: 1,
+            initialAnchor: DragonRoamingAnchors.Length - 1,
+            reverseRoute: true);
+    }
 
-        return null;
+    private void AddRoamingDragon(
+        PackedScene dragonScene,
+        string nodeName,
+        string displayName,
+        Color bodyColor,
+        Color labelColor,
+        Vector3 spawn,
+        int seed,
+        int initialTravelMode,
+        int initialAnchor,
+        bool reverseRoute)
+    {
+        var model = dragonScene.Instantiate<Node3D>();
+        TuneDragonMaterials(model, bodyColor);
+        var dragon = new RoamingDragon
+        {
+            Name = nodeName,
+            Position = spawn,
+            Rotation = new Vector3(0, Mathf.DegToRad(24.0f), 0)
+        };
+        dragon.Configure(
+            _pathfinder,
+            model,
+            displayName,
+            labelColor,
+            DragonRoamingAnchors,
+            seed,
+            initialTravelMode,
+            initialAnchor,
+            reverseRoute,
+            () => PlayerPosition,
+            () => _roamingDragons
+                .Where(candidate => IsInstanceValid(candidate) && candidate.IsInsideTree())
+                .Select(candidate => candidate.GlobalPosition)
+                .ToArray());
+
+        // Roaming dragons stay directly under the valley instead of a streamed
+        // grid root, allowing them to cross grid boundaries without vanishing.
+        AddChild(dragon);
+        _roamingDragons.Add(dragon);
     }
 
     private void HideStylizedEnvironmentInsideFootprint(Vector3 center, Vector2 halfExtents)
@@ -2938,7 +2943,7 @@ public partial class StonehavenValley : Node3D
         }
     }
 
-    private static void TuneDragonMaterials(Node node)
+    private static void TuneDragonMaterials(Node node, Color bodyColor)
     {
         if (node is MeshInstance3D meshInstance && meshInstance.Mesh is not null)
         {
@@ -2950,15 +2955,19 @@ public partial class StonehavenValley : Node3D
                 }
 
                 var material = (StandardMaterial3D)source.Duplicate();
-                material.AlbedoColor = new Color("72777d");
-                material.Roughness = 0.78f;
+                var luminance = bodyColor.R * 0.2126f +
+                                bodyColor.G * 0.7152f +
+                                bodyColor.B * 0.0722f;
+                material.AlbedoColor = bodyColor;
+                material.Roughness = luminance < 0.12f ? 0.62f : 0.72f;
+                material.Metallic = luminance < 0.12f ? 0.18f : 0.04f;
                 meshInstance.SetSurfaceOverrideMaterial(surface, material);
             }
         }
 
         foreach (var child in node.GetChildren())
         {
-            TuneDragonMaterials(child);
+            TuneDragonMaterials(child, bodyColor);
         }
     }
 

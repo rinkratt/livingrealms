@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.8
+LIVING REALMS WINDOWS PLAYTEST 0.9.9
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,15 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.9
+- Adds Emberwing, a red dragon, and Nightveil, a black dragon to Willowmere.
+- Both dragons independently use Idle, Walk, Run, and Fly while roaming all
+  nine connected map grids.
+- Ground travel follows the world pathfinder while long cross-grid journeys
+  use flight and safe landing positions.
+- Player clearance and dragon-to-dragon separation prevent wings and bodies
+  from repeatedly blocking the camera.
 
 BUILD 0.9.8
 - Replaces the fragile single-node gameplay request path so the persistent
