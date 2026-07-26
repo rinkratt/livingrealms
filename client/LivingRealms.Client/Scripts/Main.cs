@@ -8,7 +8,7 @@ namespace LivingRealms.Client;
 
 public partial class Main : Control
 {
-    private const string ClientVersion = "0.9.6";
+    private const string ClientVersion = "0.9.7";
     private const string UpdateManifestUrl = "https://living-realms.com/downloads/windows-version.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

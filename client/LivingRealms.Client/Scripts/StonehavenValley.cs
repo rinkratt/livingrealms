@@ -4,7 +4,7 @@ namespace LivingRealms.Client;
 
 public partial class StonehavenValley : Node3D
 {
-    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.5";
+    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.7";
     private const float KnockoutProtectionDuration = 8.0f;
     private const float TargetCycleRadius = 32.0f;
     private const float WorldGridSize = 96.0f;
@@ -15,11 +15,13 @@ public partial class StonehavenValley : Node3D
     private const int MaximumRaidResidents = 32;
     private const float DarkwoodCampClearingRadius = 19.5f;
     private const string StylizedEnvironmentScenePath = "res://Assets/Environment/stonehaven_vertical_slice.glb";
+    private const string WillowmereDragonScenePath = "res://Assets/Creatures3D/dragon-3dhaupt.glb";
     private static readonly Vector3 DarkwoodCampCenter = new(-116.0f, 0, -104.0f);
     private static readonly Vector3 MirrorwaterLakeCenter = new(101.0f, 0, -20.0f);
     private static readonly Vector3 IronMineCenter = new(104.0f, 0, -104.0f);
     private static readonly Vector3 StonehavenFarmlandCenter = new(0, 0, 96.0f);
     private static readonly Vector3 CreatureTestingGroundsCenter = new(96.0f, 0, 92.0f);
+    private static readonly Vector3 WillowmereDragonRoostCenter = new(-112.0f, 0, 104.0f);
     private static readonly Vector2 StonehavenLumberYardCenter = new(-22.0f, -19.5f);
     private static readonly Vector2 StonehavenLumberYardClearance = new(5.25f, 4.0f);
     private static readonly Color Gold = new("d8a94b");
@@ -2557,6 +2559,7 @@ public partial class StonehavenValley : Node3D
         BuildIronMiningDistrict();
         BuildStonehavenFarmlands();
         BuildCreatureTestingGrounds();
+        BuildWillowmereDragonRoost();
     }
 
     private void BuildMirrorwaterLake()
@@ -2737,6 +2740,187 @@ public partial class StonehavenValley : Node3D
             CreatureTestingGroundsCenter + new Vector3(0, 3.2f, -23.5f),
             21,
             Parchment);
+    }
+
+    private void BuildWillowmereDragonRoost()
+    {
+        ClearStylizedEnvironmentFootprint(
+            WillowmereDragonRoostCenter,
+            new Vector2(24.0f, 22.0f),
+            hideLegacyRoads: false);
+        HideStylizedEnvironmentInsideFootprint(
+            WillowmereDragonRoostCenter,
+            new Vector2(24.0f, 22.0f));
+
+        var roost = CreateMesh(
+            "WillowmereDragonRoostSurface",
+            new CylinderMesh
+            {
+                TopRadius = 1,
+                BottomRadius = 1,
+                Height = 0.16f,
+                RadialSegments = 48
+            },
+            WillowmereDragonRoostCenter + new Vector3(0, 0.08f, 0),
+            Vector3.Zero,
+            new Color("343330"));
+        roost.Scale = new Vector3(18.5f, 1, 15.5f);
+        AddWorldNode(roost, WillowmereDragonRoostCenter);
+
+        AddFeatureRoadPath(
+            "WillowmereDragonRoostPath",
+            [
+                new Vector3(-96.0f, 0.08f, 70.0f),
+                new Vector3(-101.0f, 0.08f, 79.0f),
+                new Vector3(-106.0f, 0.08f, 89.0f),
+                WillowmereDragonRoostCenter + new Vector3(0, 0.08f, -12.0f)
+            ],
+            3.8f,
+            new Color("5d4b3b"));
+
+        for (var index = 0; index < 11; index++)
+        {
+            var angle = index * Mathf.Tau / 11.0f;
+            var radius = index % 2 == 0 ? 17.2f : 18.8f;
+            var boulder = CreateMesh(
+                $"DragonRoostBoulder{index + 1}",
+                new SphereMesh
+                {
+                    Radius = 1.0f,
+                    Height = 2.0f,
+                    RadialSegments = 10,
+                    Rings = 5
+                },
+                WillowmereDragonRoostCenter + new Vector3(
+                    Mathf.Cos(angle) * radius,
+                    0.55f,
+                    Mathf.Sin(angle) * radius),
+                new Vector3(0.08f * index, angle, 0.06f * (index % 3)),
+                index % 2 == 0 ? new Color("4a4a47") : new Color("3e403e"));
+            boulder.Scale = new Vector3(
+                1.3f + 0.15f * (index % 3),
+                0.8f + 0.10f * (index % 2),
+                1.1f + 0.12f * ((index + 1) % 3));
+            AddWorldNode(boulder, boulder.Position);
+        }
+
+        var dragonScene = GD.Load<PackedScene>(WillowmereDragonScenePath);
+        if (dragonScene is null)
+        {
+            GD.PushWarning($"Unable to load the Willowmere dragon model: {WillowmereDragonScenePath}");
+            return;
+        }
+
+        var dragonRoot = new Node3D
+        {
+            Name = "WillowmereDragonReview",
+            Position = WillowmereDragonRoostCenter + new Vector3(0, 0.12f, 2.0f),
+            Rotation = new Vector3(0, Mathf.DegToRad(24.0f), 0),
+            Scale = Vector3.One * 0.11f
+        };
+        var dragonModel = dragonScene.Instantiate<Node3D>();
+        dragonModel.Name = "DragonModel";
+        TuneDragonMaterials(dragonModel);
+        dragonRoot.AddChild(dragonModel);
+        AddWorldNode(dragonRoot, WillowmereDragonRoostCenter);
+
+        var animationPlayer = FindAnimationPlayer(dragonModel);
+        if (animationPlayer is not null && animationPlayer.HasAnimation("Idle"))
+        {
+            var idle = animationPlayer.GetAnimation("Idle");
+            idle.LoopMode = Animation.LoopModeEnum.Linear;
+            animationPlayer.Autoplay = "Idle";
+        }
+
+        AddInvisibleStaticBox(
+            "WillowmereDragonReviewCollision",
+            WillowmereDragonRoostCenter + new Vector3(0, 1.5f, -0.6f),
+            new Vector3(5.2f, 3.0f, 11.2f));
+        AddLabel(
+            "WillowmereDragonRoostLabel",
+            "C1  -  WILLOWMERE DRAGON ROOST\nDRAGON MODEL REVIEW  -  NON-HOSTILE",
+            WillowmereDragonRoostCenter + new Vector3(0, 6.2f, -9.0f),
+            30,
+            new Color("d7be73"));
+        AddLabel(
+            "WillowmereDragonCredit",
+            "BGE DRAGON 2.0 BY 3DHAUPT  -  CC-BY",
+            WillowmereDragonRoostCenter + new Vector3(0, 3.7f, -9.0f),
+            18,
+            Parchment);
+    }
+
+    private static AnimationPlayer? FindAnimationPlayer(Node node)
+    {
+        if (node is AnimationPlayer animationPlayer)
+        {
+            return animationPlayer;
+        }
+
+        foreach (var child in node.GetChildren())
+        {
+            var found = FindAnimationPlayer(child);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private void HideStylizedEnvironmentInsideFootprint(Vector3 center, Vector2 halfExtents)
+    {
+        if (!IsInstanceValid(_stylizedEnvironmentRoot))
+        {
+            return;
+        }
+
+        HideStylizedEnvironmentInsideFootprint(
+            _stylizedEnvironmentRoot!,
+            center,
+            halfExtents);
+    }
+
+    private static void HideStylizedEnvironmentInsideFootprint(
+        Node node,
+        Vector3 center,
+        Vector2 halfExtents)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is GeometryInstance3D geometry &&
+                MathF.Abs(geometry.GlobalPosition.X - center.X) <= halfExtents.X &&
+                MathF.Abs(geometry.GlobalPosition.Z - center.Z) <= halfExtents.Y)
+            {
+                geometry.Visible = false;
+            }
+            HideStylizedEnvironmentInsideFootprint(child, center, halfExtents);
+        }
+    }
+
+    private static void TuneDragonMaterials(Node node)
+    {
+        if (node is MeshInstance3D meshInstance && meshInstance.Mesh is not null)
+        {
+            for (var surface = 0; surface < meshInstance.Mesh.GetSurfaceCount(); surface++)
+            {
+                if (meshInstance.GetActiveMaterial(surface) is not StandardMaterial3D source)
+                {
+                    continue;
+                }
+
+                var material = (StandardMaterial3D)source.Duplicate();
+                material.AlbedoColor = new Color("72777d");
+                material.Roughness = 0.78f;
+                meshInstance.SetSurfaceOverrideMaterial(surface, material);
+            }
+        }
+
+        foreach (var child in node.GetChildren())
+        {
+            TuneDragonMaterials(child);
+        }
     }
 
     private void BuildIronMiningDistrict()
@@ -3655,7 +3839,10 @@ public partial class StonehavenValley : Node3D
         var insideFarmland =
             MathF.Abs(position.X - StonehavenFarmlandCenter.X) <= 45.0f &&
             MathF.Abs(position.Z - StonehavenFarmlandCenter.Z) <= 45.0f;
-        return insideLumberYard || insideLakeDistrict || insideMineDistrict || insideFarmland;
+        var dragonRoostX = (position.X - WillowmereDragonRoostCenter.X) / 24.0f;
+        var dragonRoostZ = (position.Z - WillowmereDragonRoostCenter.Z) / 22.0f;
+        var insideDragonRoost = dragonRoostX * dragonRoostX + dragonRoostZ * dragonRoostZ <= 1.0f;
+        return insideLumberYard || insideLakeDistrict || insideMineDistrict || insideFarmland || insideDragonRoost;
     }
 
     private static Label3D CreateNaturalResourceLabel(string text, Vector3 position) => new()

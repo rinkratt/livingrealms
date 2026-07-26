@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.6
+LIVING REALMS WINDOWS PLAYTEST 0.9.7
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,14 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.7
+- Adds a full-size, animated dragon model-review roost to Willowmere in grid C1.
+- The dragon is non-hostile and currently plays its idle animation so its model,
+  materials, proportions, and movement can be reviewed safely in the game.
+- Clears a dedicated viewing area and adds a path, boundary stones, collision,
+  and in-world attribution at the roost.
+- Dragon model: "BGE Dragon 2.0" by 3DHaupt, used under CC BY from BlendSwap.
 
 BUILD 0.9.6
 - Fixes a startup request collision that could prevent every server creature from
