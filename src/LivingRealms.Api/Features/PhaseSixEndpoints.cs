@@ -237,7 +237,7 @@ public static class PhaseSixEndpoints
         var recentHistoryRows = await database.WorldHistory.AsNoTracking()
             .OrderByDescending(x => x.OccurredAt)
             .ThenByDescending(x => x.CreatedAt)
-            .Take(8)
+            .Take(12)
             .ToArrayAsync(cancellationToken);
         var recentHistory = recentHistoryRows.Select(x => new HistoryResponse(
             x.Id,
@@ -248,6 +248,21 @@ public static class PhaseSixEndpoints
             CentralClock.Convert(x.OccurredAt))).ToArray();
         var destructibleStructures = await new WorldStructureService(database)
             .GetStatesAsync(cancellationToken: cancellationToken);
+        var ironSource = await database.WorldResourceNodes.AsNoTracking()
+            .SingleAsync(x => x.Id == LivingRealmsDbContext.IrondeepOreNodeId, cancellationToken);
+        var ironMine = await database.WorldStructures.AsNoTracking()
+            .SingleAsync(x => x.Id == LivingRealmsDbContext.IrondeepMineStructureId, cancellationToken);
+        var ironOperations = await database.IronMiningOperations.AsNoTracking()
+            .OrderBy(x => x.Owner)
+            .ToArrayAsync(cancellationToken);
+        var mineGuardNames = await database.SettlementResidents.AsNoTracking()
+            .Where(x => x.SettlementId == settlement.Id &&
+                        x.Role == "A3 Mine Guard" &&
+                        x.Health > 0 &&
+                        (x.Status == ResidentStatus.Active || x.Status == ResidentStatus.Injured))
+            .OrderBy(x => x.Name)
+            .Select(x => x.Name)
+            .ToArrayAsync(cancellationToken);
 
         var resources = faction.Resources
             .OrderBy(x => x.Kind)
@@ -330,6 +345,31 @@ public static class PhaseSixEndpoints
                     huntableWildlife.Length,
                     availableWildlife,
                     huntableWildlife.Length - availableWildlife)),
+            new IronEconomyResponse(
+                new IronSourceResponse(
+                    "A3",
+                    ironSource.Name,
+                    ironSource.Remaining,
+                    ironSource.Capacity,
+                    ironMine.Health,
+                    ironMine.MaximumHealth,
+                    ironMine.Health > 0 && ironSource.Remaining > 0),
+                ToIronOperationResponse(
+                    ironOperations.Single(x => x.Owner == ResourceOwner.Stonehaven),
+                    settlement.Iron,
+                    settlement.WeaponTier,
+                    settlement.ArmorTier),
+                ToIronOperationResponse(
+                    ironOperations.Single(x => x.Owner == ResourceOwner.Darkwood),
+                    faction.Resources.Single(x => x.Kind == ResourceKind.Iron).Amount,
+                    faction.WeaponTier,
+                    faction.ArmorTier),
+                new MineGuardResponse(
+                    settlement.MineGuardCount,
+                    5,
+                    settlement.MineGuardCount * 5,
+                    settlement.TreasuryGold,
+                    mineGuardNames)),
             destructibleStructures,
             new WorldEventReadinessResponse(
                 new TriggerReadinessResponse(
@@ -386,6 +426,27 @@ public static class PhaseSixEndpoints
             snapshot.HoursOfFoodRemaining,
             snapshot.RecommendedRecruitmentRole);
 
+    private static IronOperationResponse ToIronOperationResponse(
+        IronMiningOperation operation,
+        long storedIron,
+        int weaponTier,
+        int armorTier) =>
+        new(
+            operation.Owner.ToString(),
+            operation.MinerName,
+            operation.Status.ToString(),
+            operation.PositionX,
+            operation.PositionY,
+            operation.PositionZ,
+            operation.CargoIron,
+            operation.TotalIronDelivered,
+            operation.TripsCompleted,
+            storedIron,
+            weaponTier,
+            weaponTier >= 3 ? null : (weaponTier + 1) * 12,
+            armorTier,
+            armorTier >= 3 ? null : (armorTier + 1) * 10);
+
     private static string FormatAssaultPhase(StonehavenAssaultStatus status) => status switch
     {
         StonehavenAssaultStatus.Assembling => "Guard Captain Mira is assembling the counterattack at Stonehaven's gate.",
@@ -411,6 +472,7 @@ public static class PhaseSixEndpoints
         FactionResponse Faction,
         SettlementResponse Settlement,
         SurvivalResponse Survival,
+        IronEconomyResponse IronEconomy,
         IReadOnlyCollection<WorldStructureState> Structures,
         WorldEventReadinessResponse EventReadiness,
         EventQueueResponse Events,
@@ -483,6 +545,40 @@ public static class PhaseSixEndpoints
         int HoursOfFoodRemaining,
         string RecommendedRecruitmentRole);
     public sealed record WildlifeResponse(int Total, int Available, int Respawning);
+    public sealed record IronEconomyResponse(
+        IronSourceResponse Source,
+        IronOperationResponse Stonehaven,
+        IronOperationResponse Darkwood,
+        MineGuardResponse StonehavenMineGuards);
+    public sealed record IronSourceResponse(
+        string Grid,
+        string Name,
+        int Remaining,
+        int Capacity,
+        int MineHealth,
+        int MineMaximumHealth,
+        bool Operational);
+    public sealed record IronOperationResponse(
+        string Owner,
+        string MinerName,
+        string Status,
+        float PositionX,
+        float PositionY,
+        float PositionZ,
+        int CargoIron,
+        int TotalIronDelivered,
+        int TripsCompleted,
+        long StoredIron,
+        int WeaponTier,
+        int? NextWeaponTierCost,
+        int ArmorTier,
+        int? NextArmorTierCost);
+    public sealed record MineGuardResponse(
+        int Count,
+        int GoldPerGuardPerWorldDay,
+        int CurrentDailyCost,
+        int TreasuryGold,
+        IReadOnlyCollection<string> Names);
     public sealed record SettlementLeaderResponse(
         Guid Id,
         string Name,

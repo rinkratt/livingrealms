@@ -144,7 +144,7 @@ public static class PhaseSevenEndpoints
                     new("Securing emergency supplies", ToPosition(resident.SafeX, resident.SafeY, resident.SafeZ)),
                 "Lumberjack" =>
                     new("Barricading the gate", ToPosition(resident.SafeX, resident.SafeY, resident.SafeZ)),
-                "Quarry Worker" =>
+                "Quarry Worker" or "Iron Miner" =>
                     new("Reinforcing the walls", ToPosition(resident.SafeX, resident.SafeY, resident.SafeZ)),
                 "Villager" =>
                     new("Carrying water and messages", ToPosition(resident.SafeX, resident.SafeY, resident.SafeZ)),
@@ -158,6 +158,18 @@ public static class PhaseSevenEndpoints
         if (resident.Status == ResidentStatus.Injured || resident.Health < resident.MaximumHealth / 2)
         {
             return new("Recovering", ToPosition(resident.SafeX, resident.SafeY, resident.SafeZ));
+        }
+
+        if (resident.Role == "A3 Mine Guard")
+        {
+            var patrolStep = (worldHour + StablePatrolOffset(resident.Id)) % 3;
+            var patrol = patrolStep switch
+            {
+                0 => ToPosition(resident.WorkX, resident.WorkY, resident.WorkZ),
+                1 => ToPosition(resident.WorkX - 5, resident.WorkY, resident.WorkZ + 4),
+                _ => ToPosition(resident.WorkX + 5, resident.WorkY, resident.WorkZ + 4)
+            };
+            return new("Protecting Irondeep Mine", patrol);
         }
 
         if (resident.Role.Contains("Guard", StringComparison.OrdinalIgnoreCase))
@@ -181,7 +193,7 @@ public static class PhaseSevenEndpoints
         {
             "Innkeeper" => worldHour is >= 6 and < 23,
             "Villager" => worldHour is >= 7 and < 20,
-            "Lumberjack" or "Quarry Worker" => true,
+            "Lumberjack" or "Quarry Worker" or "Iron Miner" => true,
             _ => worldHour is >= 7 and < 19
         };
         return working
@@ -222,6 +234,7 @@ public static class PhaseSevenEndpoints
         "Storekeeper" => ["Trade", "Appraisal", "Provisioning"],
         "Lumberjack" => ["Woodcutting", "Forestry", "Carpentry"],
         "Quarry Worker" => ["Quarrying", "Stonecutting", "Masonry"],
+        "Iron Miner" => ["Iron Mining", "Ore Hauling", "Prospecting"],
         "Farmer" => ["Farming", "Animal Handling", "Seedcraft"],
         "Carpenter" => ["Carpentry", "Joinery", "Repair"],
         "Mason" => ["Masonry", "Fortification", "Quarrying"],

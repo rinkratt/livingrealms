@@ -23,6 +23,10 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public static readonly Guid OrenResidentId = Guid.Parse("70000000-0000-4000-8000-000000000007");
     public static readonly Guid NessaResidentId = Guid.Parse("70000000-0000-4000-8000-000000000008");
     public static readonly Guid DainResidentId = Guid.Parse("70000000-0000-4000-8000-000000000009");
+    public static readonly Guid StonehavenIronOperationId = Guid.Parse("84000000-0000-4000-8000-000000000001");
+    public static readonly Guid DarkwoodIronOperationId = Guid.Parse("84000000-0000-4000-8000-000000000002");
+    public static readonly Guid IrondeepOreNodeId = Guid.Parse("82000000-0000-4000-8000-000000000008");
+    public static readonly Guid IrondeepMineStructureId = Guid.Parse("83000000-0000-4000-8000-000000000013");
     public static readonly Guid AvelineResidentId = Guid.Parse("73000000-0000-4000-8000-000000000001");
     public static readonly Guid CedricResidentId = Guid.Parse("73000000-0000-4000-8000-000000000002");
     public static readonly Guid YsabelResidentId = Guid.Parse("73000000-0000-4000-8000-000000000003");
@@ -63,6 +67,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public DbSet<Faction> Factions => Set<Faction>();
     public DbSet<FactionResource> FactionResources => Set<FactionResource>();
     public DbSet<FactionStructure> FactionStructures => Set<FactionStructure>();
+    public DbSet<IronMiningOperation> IronMiningOperations => Set<IronMiningOperation>();
     public DbSet<WorldStructure> WorldStructures => Set<WorldStructure>();
     public DbSet<CreatureSpecies> CreatureSpecies => Set<CreatureSpecies>();
     public DbSet<Creature> Creatures => Set<Creature>();
@@ -83,6 +88,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
         ConfigureAccounts(modelBuilder);
         ConfigureWorld(modelBuilder);
         ConfigureFactions(modelBuilder);
+        ConfigureIronEconomy(modelBuilder);
         ConfigureCreatures(modelBuilder);
         ConfigureEvents(modelBuilder);
         ConfigureDevelopment(modelBuilder);
@@ -193,6 +199,11 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                 Iron = WorldPopulationService.StartingStonehavenIron,
                 DefenseRating = 65,
                 GuardStrength = 42,
+                WeaponTier = 0,
+                ArmorTier = 0,
+                TreasuryGold = 30,
+                MineGuardCount = 0,
+                LastMineGuardWageDay = 0,
                 IsDestroyed = false,
                 CreatedAt = PhaseSixSeedTime,
                 UpdatedAt = PhaseSixSeedTime
@@ -344,19 +355,19 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                 CreateResident(
                     DainResidentId,
                     "Dain",
-                    "Quarry Worker",
+                    "Iron Miner",
                     95,
                     false,
                     new(7, 0.08f, -24),
-                    new(88, 0.08f, -96),
+                    new(121, 0.08f, -103),
                     new(4, 0.08f, -15),
-                    "Stonehaven's walls begin in the quarry. Give me a strong back and enough daylight.",
-                    "Quarrying",
+                    "Every ingot begins at Irondeep. I walk the ore home before Brann counts it.",
+                    "Iron Mining",
                     3,
                     "Patient",
                     190,
                     false,
-                    "Dain marks every stone load so the wall ledger can explain where its strength came from."));
+                    "Dain works the only known iron vein in A3 and records every load delivered to Stonehaven."));
         });
         modelBuilder.Entity<SettlementRaid>(entity =>
         {
@@ -488,6 +499,8 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                 Morale = 55,
                 TechnologyLevel = 1,
                 MilitaryStrength = 66,
+                WeaponTier = 0,
+                ArmorTier = 0,
                 PopulationCapacity = 10,
                 DevelopmentStage = 1,
                 SimulatedHours = 0,
@@ -515,6 +528,51 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
             entity.HasData(
                 CreateFactionStructure("52000000-0000-4000-8000-000000000001", "Hide Tents"),
                 CreateFactionStructure("52000000-0000-4000-8000-000000000002", "Crude Stockpile"));
+        });
+    }
+
+    private static void ConfigureIronEconomy(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<IronMiningOperation>(entity =>
+        {
+            entity.HasIndex(x => x.Owner).IsUnique();
+            entity.Property(x => x.MinerName).HasMaxLength(120);
+            entity.HasOne(x => x.Resident)
+                .WithMany()
+                .HasForeignKey(x => x.ResidentId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.Creature)
+                .WithMany()
+                .HasForeignKey(x => x.CreatureId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasData(
+                new IronMiningOperation
+                {
+                    Id = StonehavenIronOperationId,
+                    Owner = ResourceOwner.Stonehaven,
+                    MinerName = "Dain",
+                    ResidentId = DainResidentId,
+                    Status = IronMiningStatus.TravelingToMine,
+                    PositionX = 7,
+                    PositionY = 0.08f,
+                    PositionZ = -24,
+                    LastTransitionAt = PhaseSixSeedTime,
+                    CreatedAt = PhaseSixSeedTime,
+                    UpdatedAt = PhaseSixSeedTime
+                },
+                new IronMiningOperation
+                {
+                    Id = DarkwoodIronOperationId,
+                    Owner = ResourceOwner.Darkwood,
+                    MinerName = "Darkwood miner not yet assigned",
+                    Status = IronMiningStatus.TravelingToMine,
+                    PositionX = -116,
+                    PositionY = 0.08f,
+                    PositionZ = -104,
+                    LastTransitionAt = PhaseSixSeedTime,
+                    CreatedAt = PhaseSixSeedTime,
+                    UpdatedAt = PhaseSixSeedTime
+                });
         });
     }
 
@@ -842,7 +900,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                 CreateResourceNode("82000000-0000-4000-8000-000000000005", "darkwood-pine", "Darkwood Pine", ResourceKind.Wood, ResourceOwner.Darkwood, -134, -91, 70, 6, 90),
                 CreateResourceNode("82000000-0000-4000-8000-000000000006", "darkwood-deadfall", "Darkwood Deadfall", ResourceKind.Wood, ResourceOwner.Darkwood, -96, -112, 70, 6, 90),
                 CreateResourceNode("82000000-0000-4000-8000-000000000007", "darkwood-stone", "Darkwood Stone Shelf", ResourceKind.Stone, ResourceOwner.Darkwood, -132, -126, 70, 5, 110),
-                CreateResourceNode("82000000-0000-4000-8000-000000000008", "irondeep-ore-vein", "Irondeep Ore Vein", ResourceKind.Iron, ResourceOwner.Stonehaven, 121, -103, 45, 3, 150));
+                CreateResourceNode(IrondeepOreNodeId.ToString(), "irondeep-ore-vein", "Irondeep Ore Vein", ResourceKind.Iron, ResourceOwner.Stonehaven, 121, -103, 45, 3, 150));
         });
 
         modelBuilder.Entity<ConstructionProject>(entity =>

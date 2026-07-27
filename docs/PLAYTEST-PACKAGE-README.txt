@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.14
+LIVING REALMS WINDOWS PLAYTEST 0.9.15
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,19 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.15
+- Makes Irondeep in grid A3 the only source of newly created iron.
+- Sends Dain and a named Darkwood miner on persistent trips to the mine, with
+  visible travel position, carried cargo, delivered totals, and trip counts.
+- Removes generic hourly iron gains; ore enters a faction store only after its
+  worker physically returns home.
+- Spends delivered iron on persistent weapon and armor tiers for Stonehaven
+  and Darkwood, with combat bonuses and next-tier costs shown on Journey.
+- Hires two named A3 mine guards when Darkwood contests Irondeep and pays each
+  guard five town-treasury gold per world day.
+- Shows the shared vein, mine health, both hauling operations, faction
+  equipment, and Stonehaven guard payroll on the Journey page.
 
 BUILD 0.9.14
 - Starts Stonehaven with two named farmers and one named fisherman among its

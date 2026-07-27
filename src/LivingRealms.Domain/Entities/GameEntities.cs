@@ -101,6 +101,11 @@ public sealed class Settlement : Entity
     public int Iron { get; set; }
     public int DefenseRating { get; set; }
     public int GuardStrength { get; set; }
+    public int WeaponTier { get; set; }
+    public int ArmorTier { get; set; }
+    public int TreasuryGold { get; set; }
+    public int MineGuardCount { get; set; }
+    public int LastMineGuardWageDay { get; set; }
     public DateTimeOffset? LastAttackedAt { get; set; }
     public bool IsDestroyed { get; set; }
     public ICollection<SettlementResident> Residents { get; set; } = [];
@@ -222,6 +227,8 @@ public sealed class Faction : Entity
     public int Morale { get; set; }
     public int TechnologyLevel { get; set; }
     public int MilitaryStrength { get; set; }
+    public int WeaponTier { get; set; }
+    public int ArmorTier { get; set; }
     public int PopulationCapacity { get; set; }
     public int DevelopmentStage { get; set; } = 1;
     public long SimulatedHours { get; set; }
@@ -229,6 +236,24 @@ public sealed class Faction : Entity
     public DateTimeOffset NextDecisionAt { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<FactionResource> Resources { get; set; } = [];
     public ICollection<FactionStructure> Structures { get; set; } = [];
+}
+
+public sealed class IronMiningOperation : Entity
+{
+    public ResourceOwner Owner { get; set; }
+    public required string MinerName { get; set; }
+    public Guid? ResidentId { get; set; }
+    public SettlementResident? Resident { get; set; }
+    public Guid? CreatureId { get; set; }
+    public Creature? Creature { get; set; }
+    public IronMiningStatus Status { get; set; } = IronMiningStatus.TravelingToMine;
+    public float PositionX { get; set; }
+    public float PositionY { get; set; }
+    public float PositionZ { get; set; }
+    public int CargoIron { get; set; }
+    public int TotalIronDelivered { get; set; }
+    public int TripsCompleted { get; set; }
+    public DateTimeOffset LastTransitionAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class FactionResource : Entity
@@ -440,6 +465,7 @@ public enum ItemRarity { Common, Uncommon, Rare, Epic }
 public enum EquipmentSlot { Weapon, Armor }
 public enum ResourceKind { Food, Wood, Stone, Iron, Gold }
 public enum ResourceOwner { Stonehaven, Darkwood }
+public enum IronMiningStatus { TravelingToMine, Mining, ReturningHome, WaitingForOre }
 public enum WorldStructureKind { Wall, Gate, Building, Farm, Mine, Dock, Stockpile }
 public enum CreatureStatus { Alive, Dead, Missing, Captured, Promoted, Retired }
 public enum ResidentStatus { Active, Injured, Missing, Dead }

@@ -61,7 +61,7 @@ public sealed class PhaseSevenEndpointTests : IClassFixture<PhaseTwoWebApplicati
         Assert.Contains(residents, x => x.Name == "Mira" && x.Role == "Guard Captain" && x.CanFight);
         Assert.Contains(residents, x => x.Name == "Elowen" && x.Role == "Healer" && !x.CanFight);
         Assert.Contains(residents, x => x.Name == "Nessa" && x.Role == "Lumberjack" && !x.CanFight);
-        Assert.Contains(residents, x => x.Name == "Dain" && x.Role == "Quarry Worker" && !x.CanFight);
+        Assert.Contains(residents, x => x.Name == "Dain" && x.Role == "Iron Miner" && !x.CanFight);
         Assert.Contains(residents, x => x.Name == "Aveline Hart" && x.Role == "Farmer" && !x.CanFight);
         Assert.Contains(residents, x => x.Name == "Cedric Vale" && x.Role == "Farmer" && !x.CanFight);
         Assert.Contains(residents, x => x.Name == "Ysabel Reed" && x.Role == "Fisher" && !x.CanFight);

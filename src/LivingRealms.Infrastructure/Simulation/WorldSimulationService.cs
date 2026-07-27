@@ -89,6 +89,7 @@ public sealed partial class WorldSimulationService(
                 .Include(x => x.Members)
                 .ToListAsync(cancellationToken);
             var worldCreatures = await database.Creatures
+                .Include(x => x.Species)
                 .Where(x => x.RegionId == LivingRealmsDbContext.StonehavenValleyId)
                 .ToListAsync(cancellationToken);
             var leader = worldCreatures.Single(x => x.Id == LivingRealmsDbContext.GoblinChiefCreatureId);
@@ -101,6 +102,8 @@ public sealed partial class WorldSimulationService(
             faction.Morale = 55;
             faction.TechnologyLevel = 1;
             faction.MilitaryStrength = 66;
+            faction.WeaponTier = 0;
+            faction.ArmorTier = 0;
             faction.LeaderCreatureId = LivingRealmsDbContext.GoblinChiefCreatureId;
             faction.SimulatedHours = 0;
             faction.LastProcessedAt = resetAt;
@@ -147,6 +150,11 @@ public sealed partial class WorldSimulationService(
                 creature.PositionZ = creature.SpawnZ;
                 creature.LastProcessedAt = resetAt;
                 creature.UpdatedAt = resetAt;
+                if (creature.FactionId == faction.Id && creature.Id != leader.Id)
+                {
+                    creature.Attack = creature.Species.BaseAttack + Math.Max(0, creature.Level - 5) * 2;
+                    creature.Defense = creature.Species.BaseDefense + Math.Max(0, creature.Level - 5);
+                }
             }
 
             if (raids.Count > 0)
@@ -186,6 +194,11 @@ public sealed partial class WorldSimulationService(
             settlement.Iron = WorldPopulationService.StartingStonehavenIron;
             settlement.DefenseRating = 65;
             settlement.GuardStrength = 42;
+            settlement.WeaponTier = 0;
+            settlement.ArmorTier = 0;
+            settlement.TreasuryGold = 30;
+            settlement.MineGuardCount = 0;
+            settlement.LastMineGuardWageDay = 0;
             settlement.LastAttackedAt = null;
             settlement.IsDestroyed = false;
             settlement.UpdatedAt = resetAt;
@@ -218,6 +231,11 @@ public sealed partial class WorldSimulationService(
                     ? ResidentStatus.Missing
                     : ResidentStatus.Active;
                 resident.UpdatedAt = resetAt;
+            }
+            var ironOperations = await database.IronMiningOperations.ToListAsync(cancellationToken);
+            foreach (var operation in ironOperations)
+            {
+                ResetIronOperation(operation, resetAt);
             }
 
             if (assaults.Count > 0)
@@ -544,7 +562,6 @@ public sealed partial class WorldSimulationService(
             (long)darkwoodFoodEconomy.NetFoodPerHour * payload.WorldHours);
         AddResource(resources[ResourceKind.Wood], 5L * payload.WorldHours);
         AddResource(resources[ResourceKind.Stone], 2L * payload.WorldHours);
-        AddResource(resources[ResourceKind.Iron], payload.WorldHours);
         AddResource(resources[ResourceKind.Gold], payload.WorldHours / 8L);
         settlement.Food = Math.Max(
             0,
@@ -573,16 +590,11 @@ public sealed partial class WorldSimulationService(
         }
 
         var lumberjacks = activeStonehavenResidents.Count(x => x.Role == "Lumberjack");
-        var quarryWorkers = activeStonehavenResidents.Count(x => x.Role is "Quarry Worker" or "Mason");
-        var ironWorkers = activeStonehavenResidents.Count(x => x.Role is "Quarry Worker" or "Blacksmith");
+        var quarryWorkers = activeStonehavenResidents.Count(x => x.Role is "Quarry Worker" or "Iron Miner" or "Mason");
         settlement.Wood = Math.Min(700,
             settlement.Wood + Math.Max(0, lumberjacks) * payload.WorldHours);
         settlement.Stone = Math.Min(700,
             settlement.Stone + Math.Max(0, quarryWorkers) * payload.WorldHours);
-        var previousIronCycles = simulatedHoursBefore / 4;
-        var currentIronCycles = faction.SimulatedHours / 4;
-        settlement.Iron = Math.Min(350,
-            settlement.Iron + (int)Math.Max(0, currentIronCycles - previousIronCycles) * ironWorkers);
 
         var previousStonehavenGrowthCycles = simulatedHoursBefore / 24;
         var currentStonehavenGrowthCycles = faction.SimulatedHours / 24;
@@ -595,13 +607,11 @@ public sealed partial class WorldSimulationService(
             const int arrivalFoodCost = 32;
             const int arrivalWoodCost = 20;
             const int arrivalStoneCost = 12;
-            const int arrivalIronCost = 2;
             if (settlement.IsDestroyed ||
                 settlement.Population >= WorldPopulationService.StonehavenHousingCapacity ||
                 settlement.Food < foodReserve + arrivalFoodCost ||
                 settlement.Wood < arrivalWoodCost ||
-                settlement.Stone < arrivalStoneCost ||
-                settlement.Iron < arrivalIronCost)
+                settlement.Stone < arrivalStoneCost)
             {
                 break;
             }
@@ -610,7 +620,6 @@ public sealed partial class WorldSimulationService(
             settlement.Food -= arrivalFoodCost;
             settlement.Wood -= arrivalWoodCost;
             settlement.Stone -= arrivalStoneCost;
-            settlement.Iron -= arrivalIronCost;
         }
         settlement.GuardStrength = Math.Max(
             settlement.GuardStrength,
@@ -638,6 +647,15 @@ public sealed partial class WorldSimulationService(
             resources,
             stonehavenWall,
             darkwoodPalisade);
+        await AdvanceIronEconomyAsync(
+            payload.WorldHours,
+            payload.ProcessedAt,
+            simulatedHoursBefore,
+            faction,
+            settlement,
+            creatures,
+            resources,
+            cancellationToken);
 
         if (faction.DevelopmentStage == 1 &&
             faction.Population >= 8 &&
@@ -659,10 +677,10 @@ public sealed partial class WorldSimulationService(
         if (faction.DevelopmentStage == 2 &&
             faction.SimulatedHours >= 72 &&
             faction.Population >= 14 &&
-            resources[ResourceKind.Iron].Amount >= 30 &&
+            faction.WeaponTier >= 1 &&
+            faction.ArmorTier >= 1 &&
             darkwoodPalisade.CurrentLevel >= darkwoodPalisade.MaximumLevel)
         {
-            resources[ResourceKind.Iron].Amount -= 30;
             faction.DevelopmentStage = 3;
             faction.PopulationCapacity = 24;
             faction.TechnologyLevel = 3;
@@ -686,8 +704,8 @@ public sealed partial class WorldSimulationService(
         var previousMaximumHealth = leader.MaximumHealth;
         var levelsBeyondChief = Math.Max(0, leader.Level - 8);
         leader.MaximumHealth = 180 + levelsBeyondChief * 24;
-        leader.Attack = 22 + levelsBeyondChief * 3;
-        leader.Defense = 14 + levelsBeyondChief * 2;
+        leader.Attack = 22 + levelsBeyondChief * 3 + faction.WeaponTier * 3;
+        leader.Defense = 14 + levelsBeyondChief * 2 + faction.ArmorTier * 3;
         if (leader.MaximumHealth > previousMaximumHealth)
         {
             leader.Health = Math.Min(
@@ -702,7 +720,16 @@ public sealed partial class WorldSimulationService(
                 : "Goblin Chief";
         faction.LeaderCreatureId = leader.Id;
         faction.MilitaryStrength = faction.Population * 6 + leader.Level * 8 +
-                                   faction.DevelopmentStage * 25 + darkwoodPalisade.CurrentLevel * 14;
+                                   faction.DevelopmentStage * 25 + darkwoodPalisade.CurrentLevel * 14 +
+                                   faction.WeaponTier * 12 + faction.ArmorTier * 12;
+        settlement.GuardStrength = Math.Max(
+            settlement.GuardStrength,
+            42 + Math.Max(0, settlement.Population - WorldPopulationService.StartingStonehavenPopulation) * 3 +
+            settlement.WeaponTier * 8 + settlement.ArmorTier * 10);
+        settlement.DefenseRating = Math.Max(
+            settlement.DefenseRating,
+            65 + Math.Max(0, settlement.Population - WorldPopulationService.StartingStonehavenPopulation) / 4 +
+            settlement.ArmorTier * 5);
         faction.TerritorySize = faction.DevelopmentStage;
         faction.Aggression = Math.Min(100, faction.Aggression + Math.Max(0, faction.DevelopmentStage - stageBefore) * 5);
         faction.LastProcessedAt = payload.ProcessedAt;
@@ -984,7 +1011,7 @@ public sealed partial class WorldSimulationService(
         var vrakStone = 0;
         for (var hour = 0; hour < worldHours; hour++)
         {
-            var stonehavenReserve = Math.Max(16, settlement.Population * 2);
+            var stonehavenReserve = 16;
             var wallWork = ApplySimulatedProjectWork(
                 stonehavenWall,
                 nessaWorking ? Math.Min(5, Math.Max(0, settlement.Wood - stonehavenReserve)) : 0,

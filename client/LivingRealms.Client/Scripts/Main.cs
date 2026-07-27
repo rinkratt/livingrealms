@@ -1756,6 +1756,23 @@ public partial class Main : Control
                 state.Survival.Wildlife.Total,
                 state.Survival.Wildlife.Available,
                 state.Survival.Wildlife.Respawning)),
+        new WorldIronEconomyData(
+            new WorldIronSourceData(
+                state.IronEconomy.Source.Grid,
+                state.IronEconomy.Source.Name,
+                state.IronEconomy.Source.Remaining,
+                state.IronEconomy.Source.Capacity,
+                state.IronEconomy.Source.MineHealth,
+                state.IronEconomy.Source.MineMaximumHealth,
+                state.IronEconomy.Source.Operational),
+            ToIronOperation(state.IronEconomy.Stonehaven),
+            ToIronOperation(state.IronEconomy.Darkwood),
+            new WorldMineGuardData(
+                state.IronEconomy.StonehavenMineGuards.Count,
+                state.IronEconomy.StonehavenMineGuards.GoldPerGuardPerWorldDay,
+                state.IronEconomy.StonehavenMineGuards.CurrentDailyCost,
+                state.IronEconomy.StonehavenMineGuards.TreasuryGold,
+                state.IronEconomy.StonehavenMineGuards.Names)),
         state.Structures.Select(ToDestructibleStructure).ToArray(),
         new WorldEventReadinessData(
             new WorldTriggerReadinessData(
@@ -1777,6 +1794,23 @@ public partial class Main : Control
         new WorldEventQueueData(state.Events.Pending, state.Events.Completed, state.Events.Failed),
         state.RecentHistory.Select(entry =>
             new WorldHistoryData(entry.Title, entry.Description, entry.OccurredAtCentral)).ToArray());
+
+    private static WorldIronOperationData ToIronOperation(WorldIronOperationResponse operation) =>
+        new(
+            operation.Owner,
+            operation.MinerName,
+            operation.Status,
+            operation.PositionX,
+            operation.PositionY,
+            operation.PositionZ,
+            operation.CargoIron,
+            operation.TotalIronDelivered,
+            operation.TripsCompleted,
+            operation.StoredIron,
+            operation.WeaponTier,
+            operation.NextWeaponTierCost,
+            operation.ArmorTier,
+            operation.NextArmorTierCost);
 
     private static WorldFoodEconomyData ToFoodEconomy(WorldFoodEconomyResponse economy) => new(
         economy.Population,
@@ -2445,6 +2479,7 @@ public partial class Main : Control
         public WorldFactionResponse Faction { get; init; } = new();
         public WorldSettlementResponse Settlement { get; init; } = new();
         public WorldSurvivalResponse Survival { get; init; } = new();
+        public WorldIronEconomyResponse IronEconomy { get; init; } = new();
         public DestructibleStructureResponse[] Structures { get; init; } = [];
         public WorldEventReadinessResponse EventReadiness { get; init; } = new();
         public WorldEventQueueResponse Events { get; init; } = new();
@@ -2550,6 +2585,52 @@ public partial class Main : Control
         public WorldFoodEconomyResponse Stonehaven { get; init; } = new();
         public WorldFoodEconomyResponse Darkwood { get; init; } = new();
         public WorldWildlifeResponse Wildlife { get; init; } = new();
+    }
+
+    private sealed class WorldIronEconomyResponse
+    {
+        public WorldIronSourceResponse Source { get; init; } = new();
+        public WorldIronOperationResponse Stonehaven { get; init; } = new();
+        public WorldIronOperationResponse Darkwood { get; init; } = new();
+        public WorldMineGuardResponse StonehavenMineGuards { get; init; } = new();
+    }
+
+    private sealed class WorldIronSourceResponse
+    {
+        public string Grid { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public int Remaining { get; init; }
+        public int Capacity { get; init; }
+        public int MineHealth { get; init; }
+        public int MineMaximumHealth { get; init; }
+        public bool Operational { get; init; }
+    }
+
+    private sealed class WorldIronOperationResponse
+    {
+        public string Owner { get; init; } = string.Empty;
+        public string MinerName { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+        public float PositionX { get; init; }
+        public float PositionY { get; init; }
+        public float PositionZ { get; init; }
+        public int CargoIron { get; init; }
+        public int TotalIronDelivered { get; init; }
+        public int TripsCompleted { get; init; }
+        public long StoredIron { get; init; }
+        public int WeaponTier { get; init; }
+        public int? NextWeaponTierCost { get; init; }
+        public int ArmorTier { get; init; }
+        public int? NextArmorTierCost { get; init; }
+    }
+
+    private sealed class WorldMineGuardResponse
+    {
+        public int Count { get; init; }
+        public int GoldPerGuardPerWorldDay { get; init; }
+        public int CurrentDailyCost { get; init; }
+        public int TreasuryGold { get; init; }
+        public string[] Names { get; init; } = [];
     }
 
     private sealed class WorldFoodEconomyResponse

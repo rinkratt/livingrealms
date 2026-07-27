@@ -40,7 +40,7 @@ work.
 - Huntable wildlife appears in suitable areas for both factions. Competing
   hunting parties can create small territorial battles.
 
-## Phase 5: A3 iron and equipment
+## Phase 5: A3 iron and equipment — complete in 0.9.15
 
 - A3 is the only source of newly created iron.
 - Both factions must physically mine and transport it.

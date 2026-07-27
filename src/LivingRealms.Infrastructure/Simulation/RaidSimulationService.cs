@@ -266,13 +266,18 @@ public sealed partial class RaidSimulationService(
                     continue;
                 }
 
-                DamageAttackers(livingDefenders, raid.Attackers, advancedAt);
+                DamageAttackers(
+                    livingDefenders,
+                    raid.Attackers,
+                    raid.Settlement.WeaponTier,
+                    advancedAt);
                 livingAttackers = GetLivingAttackers(raid.Attackers);
                 if (livingAttackers.Length > 0)
                 {
                     raid.ResidentCasualties += DamageDefenders(
                         livingAttackers,
                         raid.Settlement.Residents,
+                        raid.Settlement.ArmorTier,
                         advancedAt);
                     ApplySettlementSupport(raid.Settlement.Residents, advancedAt);
                 }
@@ -585,13 +590,18 @@ public sealed partial class RaidSimulationService(
                     soldiers,
                     goblins,
                     assault.DefendingFaction.LeaderCreatureId,
+                    assault.Settlement.WeaponTier,
                     advancedAt);
                 defenders = LivingDarkwoodDefenders(
                     goblins,
                     assault.DefendingFaction.LeaderCreatureId);
                 if (defenders.Length > 0)
                 {
-                    DamageStonehavenSoldiers(defenders, assault, advancedAt);
+                    DamageStonehavenSoldiers(
+                        defenders,
+                        assault,
+                        assault.Settlement.ArmorTier,
+                        advancedAt);
                 }
                 assault.SoldiersRemaining = LivingAssaultMembers(assault.Members).Length;
                 assault.GoblinsRemaining = LivingDarkwoodDefenders(
@@ -612,7 +622,8 @@ public sealed partial class RaidSimulationService(
             else if (assault.Status == StonehavenAssaultStatus.AttackingCamp)
             {
                 var campDamage = LivingAssaultMembers(assault.Members).Sum(member =>
-                    Math.Max(5, SoldierAttackPower(member.Resident) / 2));
+                    Math.Max(5, (SoldierAttackPower(member.Resident) +
+                                 assault.Settlement.WeaponTier * 3) / 2));
                 var structureDamage = await structures.DamageOwnerAsync(
                     ResourceOwner.Darkwood,
                     campDamage,
@@ -714,7 +725,7 @@ public sealed partial class RaidSimulationService(
         "Guard Captain" => 18,
         "Stonehaven Guard" => 15,
         "Blacksmith" or "Hunter" => 13,
-        "Lumberjack" or "Quarry Worker" or "Mason" => 11,
+        "Lumberjack" or "Quarry Worker" or "Iron Miner" or "Mason" => 11,
         _ => 9
     };
 
@@ -722,6 +733,7 @@ public sealed partial class RaidSimulationService(
         StonehavenAssaultMember[] soldiers,
         IEnumerable<Creature> goblins,
         Guid? leaderCreatureId,
+        int weaponTier,
         DateTimeOffset damagedAt)
     {
         for (var index = 0; index < soldiers.Length; index++)
@@ -733,7 +745,9 @@ public sealed partial class RaidSimulationService(
             }
 
             var target = defenders[index % defenders.Length];
-            var damage = Math.Max(3, SoldierAttackPower(soldiers[index].Resident) - target.Defense / 4);
+            var damage = Math.Max(
+                3,
+                SoldierAttackPower(soldiers[index].Resident) + weaponTier * 3 - target.Defense / 4);
             target.Health = Math.Max(0, target.Health - damage);
             target.UpdatedAt = damagedAt;
             target.LastProcessedAt = damagedAt;
@@ -750,6 +764,7 @@ public sealed partial class RaidSimulationService(
     private static void DamageStonehavenSoldiers(
         Creature[] goblins,
         StonehavenAssault assault,
+        int armorTier,
         DateTimeOffset damagedAt)
     {
         for (var index = 0; index < goblins.Length; index++)
@@ -761,7 +776,7 @@ public sealed partial class RaidSimulationService(
             }
 
             var target = soldiers[index % soldiers.Length];
-            var damage = Math.Max(5, goblins[index].Attack / 2);
+            var damage = Math.Max(3, goblins[index].Attack / 2 - armorTier * 2);
             target.Resident.Health = Math.Max(0, target.Resident.Health - damage);
             target.Resident.UpdatedAt = damagedAt;
             if (target.Resident.Health == 0)
@@ -1120,6 +1135,7 @@ public sealed partial class RaidSimulationService(
     private static void DamageAttackers(
         SettlementResident[] defenders,
         IEnumerable<SettlementRaidAttacker> attackers,
+        int weaponTier,
         DateTimeOffset damagedAt)
     {
         var livingAtStart = GetLivingAttackers(attackers).Length;
@@ -1140,6 +1156,7 @@ public sealed partial class RaidSimulationService(
                 "Blacksmith" => 5,
                 _ => 4
             };
+            damage += weaponTier * 2;
             target.Creature.Health = Math.Max(0, target.Creature.Health - damage);
             target.Creature.UpdatedAt = damagedAt;
             target.Creature.LastProcessedAt = damagedAt;
@@ -1153,6 +1170,7 @@ public sealed partial class RaidSimulationService(
     private static int DamageDefenders(
         SettlementRaidAttacker[] attackers,
         IEnumerable<SettlementResident> residents,
+        int armorTier,
         DateTimeOffset damagedAt)
     {
         var deaths = 0;
@@ -1165,7 +1183,9 @@ public sealed partial class RaidSimulationService(
             }
 
             var defender = defenders[index % defenders.Length];
-            var damage = Math.Max(8, attackers[index].Creature.Attack * 2 / 3);
+            var damage = Math.Max(
+                Math.Max(3, 8 - armorTier * 2),
+                attackers[index].Creature.Attack * 2 / 3 - armorTier * 2);
             defender.Health = Math.Max(0, defender.Health - damage);
             defender.UpdatedAt = damagedAt;
             if (defender.Health == 0)

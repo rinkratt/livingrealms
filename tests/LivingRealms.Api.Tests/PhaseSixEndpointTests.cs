@@ -91,7 +91,10 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
                 .ToDictionaryAsync(x => x.Id);
             var wall = projects[LivingRealmsDbContext.StonehavenWallProjectId];
             Assert.True(wall.WoodContributed > 0);
-            Assert.True(wall.StoneContributed > 0);
+            Assert.True(
+                wall.StoneContributed > 0,
+                $"Stonehaven wall stone contribution was {wall.StoneContributed}; store has " +
+                $"{await diagnosticDatabase.Settlements.Where(x => x.Id == LivingRealmsDbContext.StonehavenVillageId).Select(x => x.Stone).SingleAsync()} stone.");
             Assert.NotNull(wall.LastNpcContributionAt);
             var palisade = projects[LivingRealmsDbContext.DarkwoodPalisadeProjectId];
             Assert.True(palisade.WoodContributed > 0);
@@ -129,13 +132,13 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal(9, advanced.World.Faction.Leader.Level);
         Assert.Equal(204, advanced.World.Faction.Leader.MaximumHealth);
         Assert.Equal(25, advanced.World.Faction.Leader.Attack);
-        Assert.Equal(16, advanced.World.Faction.Leader.Defense);
-        Assert.Equal(12, advanced.World.Settlement.Population);
-        Assert.Equal(12, advanced.World.Settlement.LivingResidents);
+        Assert.Equal(19, advanced.World.Faction.Leader.Defense);
+        Assert.Equal(14, advanced.World.Settlement.Population);
+        Assert.Equal(14, advanced.World.Settlement.LivingResidents);
         Assert.Equal(80, advanced.World.Settlement.Food);
-        Assert.Equal(24, advanced.World.Settlement.Wood);
-        Assert.Equal(24, advanced.World.Settlement.Stone);
-        Assert.Equal(14, advanced.World.Settlement.Iron);
+        Assert.Equal(16, advanced.World.Settlement.Wood);
+        Assert.Equal(16, advanced.World.Settlement.Stone);
+        Assert.Equal(6, advanced.World.Settlement.Iron);
         Assert.Contains(advanced.World.RecentHistory, x => x.EventType == "stonehaven_population_growth");
         Assert.Contains(advanced.World.Faction.Structures, x => x.Name == "Timber Palisade");
         Assert.Contains(advanced.World.Faction.Structures, x => x.Name == "Hunter Lodge");
@@ -342,6 +345,51 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
                 .SingleAsync());
     }
 
+    [Fact]
+    public async Task PhaseFiveMakesA3TheOnlyPersistentIronSourceAndPaysNamedMineGuards()
+    {
+        using var client = _factory.CreateClient();
+        await RegisterAsync(client);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/v1/world/reset", null)).StatusCode);
+
+        var initial = await client.GetFromJsonAsync<WorldStateResponse>("/api/v1/world/state", JsonOptions);
+        Assert.NotNull(initial);
+        Assert.Equal("A3", initial.IronEconomy.Source.Grid);
+        Assert.Equal(initial.IronEconomy.Source.Capacity, initial.IronEconomy.Source.Remaining);
+        Assert.Equal("Dain", initial.IronEconomy.Stonehaven.MinerName);
+        Assert.Equal(0, initial.IronEconomy.Stonehaven.TripsCompleted);
+        Assert.Equal(0, initial.IronEconomy.Darkwood.TripsCompleted);
+
+        var advancedResponse = await client.PostAsJsonAsync(
+            "/api/v1/world/advance",
+            new AdvanceWorldRequest(24));
+        Assert.Equal(HttpStatusCode.OK, advancedResponse.StatusCode);
+        var advanced = await advancedResponse.Content.ReadFromJsonAsync<AdvanceWorldResponse>(JsonOptions);
+        Assert.NotNull(advanced);
+        var iron = advanced.World.IronEconomy;
+        Assert.True(iron.Source.Remaining < iron.Source.Capacity);
+        Assert.True(iron.Stonehaven.TripsCompleted > 0);
+        Assert.True(iron.Darkwood.TripsCompleted > 0);
+        Assert.True(iron.Stonehaven.TotalIronDelivered > 0);
+        Assert.True(iron.Darkwood.TotalIronDelivered > 0);
+        Assert.True(iron.Stonehaven.WeaponTier + iron.Stonehaven.ArmorTier > 0);
+        Assert.True(iron.Darkwood.WeaponTier + iron.Darkwood.ArmorTier > 0);
+        Assert.Equal(2, iron.StonehavenMineGuards.Count);
+        Assert.Equal(10, iron.StonehavenMineGuards.CurrentDailyCost);
+        Assert.Equal(2, iron.StonehavenMineGuards.Names.Count);
+        Assert.Equal(20, iron.StonehavenMineGuards.TreasuryGold);
+
+        using var scope = _factory.Services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
+        Assert.Equal(2, await database.IronMiningOperations.CountAsync());
+        Assert.Equal(2, await database.SettlementResidents.CountAsync(x =>
+            x.Role == "A3 Mine Guard" &&
+            x.Status == ResidentStatus.Active));
+        Assert.Contains(await database.WorldHistory.ToListAsync(), x => x.EventType == "iron_delivered");
+        Assert.Contains(await database.WorldHistory.ToListAsync(), x => x.EventType == "iron_equipment_upgraded");
+        Assert.Contains(await database.WorldHistory.ToListAsync(), x => x.EventType == "irondeep_guard_contract");
+    }
+
     private async Task RegisterAsync(HttpClient client, bool administrator = true)
     {
         var response = await client.PostAsJsonAsync(
@@ -374,6 +422,7 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         FactionResponse Faction,
         SettlementResponse Settlement,
         SurvivalResponse Survival,
+        IronEconomyResponse IronEconomy,
         EventReadinessResponse EventReadiness,
         EventQueueResponse Events,
         IReadOnlyCollection<HistoryResponse> RecentHistory);
@@ -425,6 +474,37 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         int HoursOfFoodRemaining,
         string RecommendedRecruitmentRole);
     private sealed record WildlifeResponse(int Total, int Available, int Respawning);
+    private sealed record IronEconomyResponse(
+        IronSourceResponse Source,
+        IronOperationResponse Stonehaven,
+        IronOperationResponse Darkwood,
+        MineGuardResponse StonehavenMineGuards);
+    private sealed record IronSourceResponse(
+        string Grid,
+        string Name,
+        int Remaining,
+        int Capacity,
+        int MineHealth,
+        int MineMaximumHealth,
+        bool Operational);
+    private sealed record IronOperationResponse(
+        string Owner,
+        string MinerName,
+        string Status,
+        int CargoIron,
+        int TotalIronDelivered,
+        int TripsCompleted,
+        long StoredIron,
+        int WeaponTier,
+        int? NextWeaponTierCost,
+        int ArmorTier,
+        int? NextArmorTierCost);
+    private sealed record MineGuardResponse(
+        int Count,
+        int GoldPerGuardPerWorldDay,
+        int CurrentDailyCost,
+        int TreasuryGold,
+        IReadOnlyCollection<string> Names);
     private sealed record SettlementLeaderResponse(
         string Name,
         string Title,

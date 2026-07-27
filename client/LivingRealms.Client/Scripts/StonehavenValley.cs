@@ -1555,6 +1555,7 @@ public partial class StonehavenValley : Node3D
         var structureSummary = FormatStructureSummary(state.Structures);
         var stonehavenFood = FormatFoodEconomy("STONEHAVEN", state.Survival.Stonehaven);
         var darkwoodFood = FormatFoodEconomy("DARKWOOD", state.Survival.Darkwood);
+        var ironEconomy = FormatIronEconomy(state.IronEconomy);
         var adminJobs = state.CanAccelerate
             ? $"\n\nADMIN SIMULATION JOBS\n{state.Events.Pending} pending   •   {state.Events.Completed} completed   •   {state.Events.Failed} failed"
             : string.Empty;
@@ -1573,8 +1574,9 @@ public partial class StonehavenValley : Node3D
             $"Village supplies: food {state.Settlement.Food}   •   wood {state.Settlement.Wood}   •   stone {state.Settlement.Stone}   •   iron {state.Settlement.Iron}\n" +
             $"\nSURVIVAL & WORKERS\n{stonehavenFood}\n{darkwoodFood}\n" +
             $"Huntable wildlife: {state.Survival.Wildlife.Available}/{state.Survival.Wildlife.Total} active   •   {state.Survival.Wildlife.Respawning} respawning\n\n" +
+            $"IRONDEEP & EQUIPMENT\n{ironEconomy}\n\n" +
             $"Destructible settlement assets:\n{structureSummary}\n" +
-            $"Growth: at most one new resident per world day, only when housing and the required food, timber, stone, and iron are available.\n\n" +
+            $"Growth: at most one new resident per world day, only when housing and the required food, timber, and stone are available.\n\n" +
             "CAMPAIGN READINESS\nBattles become ready from living-world conditions, but only an online administrator can authorize their start." +
             adminJobs;
         SetReadinessLabel(_darkwoodReadiness, darkwoodRaid);
@@ -1608,6 +1610,38 @@ public partial class StonehavenValley : Node3D
             $"Stores {economy.FoodStored}   •   about {economy.HoursOfFoodRemaining} full hours banked   •   {recruitment}" +
             (economy.IsShortage ? "   •   FOOD SHORTAGE" : string.Empty);
     }
+
+    private static string FormatIronEconomy(WorldIronEconomyData economy)
+    {
+        var source = economy.Source;
+        var guardNames = economy.StonehavenMineGuards.Names.Count == 0
+            ? "none hired"
+            : string.Join(", ", economy.StonehavenMineGuards.Names);
+        return
+            $"{source.Grid} ONLY SOURCE: {source.Name} {source.Remaining}/{source.Capacity} ore   •   mine {source.MineHealth}/{source.MineMaximumHealth} HP   •   {(source.Operational ? "OPERATIONAL" : "STOPPED")}\n" +
+            $"{FormatIronOperation(economy.Stonehaven)}\n" +
+            $"{FormatIronOperation(economy.Darkwood)}\n" +
+            $"Stonehaven mine guard: {economy.StonehavenMineGuards.Count} ({guardNames})   •   " +
+            $"{economy.StonehavenMineGuards.GoldPerGuardPerWorldDay} gold each/world day   •   " +
+            $"current cost {economy.StonehavenMineGuards.CurrentDailyCost}/day   •   treasury {economy.StonehavenMineGuards.TreasuryGold} gold";
+    }
+
+    private static string FormatIronOperation(WorldIronOperationData operation)
+    {
+        var weaponNext = operation.NextWeaponTierCost is null
+            ? "MAX"
+            : $"{operation.NextWeaponTierCost} iron next";
+        var armorNext = operation.NextArmorTierCost is null
+            ? "MAX"
+            : $"{operation.NextArmorTierCost} iron next";
+        return
+            $"{operation.Owner}: {operation.MinerName}   •   {SplitPascalCase(operation.Status)}   •   " +
+            $"cargo {operation.CargoIron}   •   delivered {operation.TotalIronDelivered} over {operation.TripsCompleted} trips   •   stores {operation.StoredIron}\n" +
+            $"  Persistent equipment: weapons L{operation.WeaponTier} ({weaponNext})   •   armor L{operation.ArmorTier} ({armorNext})";
+    }
+
+    private static string SplitPascalCase(string value) =>
+        System.Text.RegularExpressions.Regex.Replace(value, "(?<!^)([A-Z])", " $1");
 
     private static void SetReadinessLabel(Label label, WorldTriggerReadinessData readiness)
     {
@@ -2348,6 +2382,14 @@ public partial class StonehavenValley : Node3D
             new WorldFoodEconomyData(11, 64, 2, 1, 0, 10, 3, 0, 13, 11, 2, false, 5, "None"),
             new WorldFoodEconomyData(7, 80, 0, 0, 1, 0, 0, 10, 10, 7, 3, false, 11, "None"),
             new WorldWildlifeData(15, 15, 0)),
+        new WorldIronEconomyData(
+            new WorldIronSourceData("A3", "Irondeep Ore Vein", 45, 45, 1400, 1400, true),
+            new WorldIronOperationData(
+                "Stonehaven", "Dain", "TravelingToMine", 8, 0.08f, -24, 0, 0, 0, 4, 0, 12, 0, 10),
+            new WorldIronOperationData(
+                "Darkwood", "Darkwood miner not yet assigned", "TravelingToMine",
+                -116, 0.08f, -104, 0, 0, 0, 5, 0, 12, 0, 10),
+            new WorldMineGuardData(0, 5, 0, 30, [])),
         [
             new DestructibleStructureData(
                 Guid.Parse("83000000-0000-4000-8000-000000000001"),
@@ -5380,6 +5422,7 @@ public sealed record WorldStateData(
     WorldFactionData Faction,
     WorldSettlementData Settlement,
     WorldSurvivalData Survival,
+    WorldIronEconomyData IronEconomy,
     IReadOnlyCollection<DestructibleStructureData> Structures,
     WorldEventReadinessData EventReadiness,
     WorldEventQueueData Events,
@@ -5457,6 +5500,40 @@ public sealed record WorldFoodEconomyData(
     int HoursOfFoodRemaining,
     string RecommendedRecruitmentRole);
 public sealed record WorldWildlifeData(int Total, int Available, int Respawning);
+public sealed record WorldIronEconomyData(
+    WorldIronSourceData Source,
+    WorldIronOperationData Stonehaven,
+    WorldIronOperationData Darkwood,
+    WorldMineGuardData StonehavenMineGuards);
+public sealed record WorldIronSourceData(
+    string Grid,
+    string Name,
+    int Remaining,
+    int Capacity,
+    int MineHealth,
+    int MineMaximumHealth,
+    bool Operational);
+public sealed record WorldIronOperationData(
+    string Owner,
+    string MinerName,
+    string Status,
+    float PositionX,
+    float PositionY,
+    float PositionZ,
+    int CargoIron,
+    int TotalIronDelivered,
+    int TripsCompleted,
+    long StoredIron,
+    int WeaponTier,
+    int? NextWeaponTierCost,
+    int ArmorTier,
+    int? NextArmorTierCost);
+public sealed record WorldMineGuardData(
+    int Count,
+    int GoldPerGuardPerWorldDay,
+    int CurrentDailyCost,
+    int TreasuryGold,
+    IReadOnlyCollection<string> Names);
 public sealed record WorldEventReadinessData(
     WorldTriggerReadinessData DarkwoodRaid,
     WorldTriggerReadinessData StonehavenCounterattack);

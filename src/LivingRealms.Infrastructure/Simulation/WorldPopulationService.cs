@@ -208,7 +208,7 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
                 {
                     0 => "Clan Raider",
                     1 => "Woodcutter",
-                    2 => "Stone Gatherer",
+                    2 => "Iron Miner",
                     3 => "Camp Guard",
                     4 => "Scout",
                     _ => "Clan Raider"
@@ -228,8 +228,8 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
                 Level = level,
                 Health = maximumHealth,
                 MaximumHealth = maximumHealth,
-                Attack = species.BaseAttack + Math.Max(0, level - 5) * 2,
-                Defense = species.BaseDefense + Math.Max(0, level - 5),
+                Attack = species.BaseAttack + Math.Max(0, level - 5) * 2 + faction.WeaponTier * 2,
+                Defense = species.BaseDefense + Math.Max(0, level - 5) + faction.ArmorTier * 2,
                 MovementSpeed = species.BaseMovementSpeed,
                 PositionX = -116 + post.X,
                 PositionY = 0.08f,
@@ -249,7 +249,7 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
                 {
                     "Clan Hunter" => "goblin-archery",
                     "Woodcutter" => "woodcutting",
-                    "Stone Gatherer" => "stone-gathering",
+                    "Iron Miner" => "iron-mining",
                     "Scout" => "scouting",
                     _ => "goblin-blade"
                 },
@@ -336,12 +336,12 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
 
     private static SettlementResident CreateStonehavenResident(int index, string name, string role)
     {
-        var canFight = role is "Stonehaven Guard" or "Hunter";
+        var canFight = role is "Stonehaven Guard" or "A3 Mine Guard" or "Hunter";
         var maximumHealth = role switch
         {
-            "Stonehaven Guard" => 110,
+            "Stonehaven Guard" or "A3 Mine Guard" => 110,
             "Hunter" => 100,
-            "Mason" or "Carpenter" or "Farmer" or "Miner" => 95,
+            "Mason" or "Carpenter" or "Farmer" or "Miner" or "Iron Miner" => 95,
             _ => 85
         };
         var (homeX, homeZ) = ResolveStonehavenHomePosition(index, role);
@@ -387,9 +387,9 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
     {
         var maximumHealth = role switch
         {
-            "Stonehaven Guard" => 110,
+            "Stonehaven Guard" or "A3 Mine Guard" => 110,
             "Hunter" => 100,
-            "Mason" or "Carpenter" or "Farmer" or "Miner" => 95,
+            "Mason" or "Carpenter" or "Farmer" or "Miner" or "Iron Miner" => 95,
             _ => 85
         };
         var home = ResolveStonehavenHomePosition(index, role);
@@ -398,7 +398,7 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         resident.MaximumHealth = maximumHealth;
         resident.Health = maximumHealth;
         resident.Status = ResidentStatus.Active;
-        resident.CanFight = role is "Stonehaven Guard" or "Hunter";
+        resident.CanFight = role is "Stonehaven Guard" or "A3 Mine Guard" or "Hunter";
         resident.PrimarySkill = PrimarySkillFor(role);
         resident.SkillLevel = 1;
         resident.Trait = TraitFor(index);
@@ -439,7 +439,7 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             _ => (26, -4 - index % 5 * 5)
         },
         "Farmer" => (-30 + index % 4 * 20, 76 + index / 4 % 2 * 25),
-        "Miner" => (114 + index % 3 * 3, -108 + index % 2 * 4),
+        "Miner" or "Iron Miner" or "A3 Mine Guard" => (114 + index % 3 * 3, -108 + index % 2 * 4),
         "Carpenter" => (-20 + index % 3 * 2, -18 + index % 2 * 3),
         "Mason" => (86 + index % 3 * 5, -91 + index % 2 * 6),
         "Hunter" => (-35 + index % 5 * 17, 25 + index % 3 * 8),
@@ -471,8 +471,10 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
     private static string DialogueFor(string role) => role switch
     {
         "Stonehaven Guard" => "My watch is marked on the roster. I know the wall section and the neighbors entrusted to me.",
+        "A3 Mine Guard" => "Stonehaven pays my daily wage to keep Irondeep's workers and ore road secure.",
         "Farmer" => "Stonehaven eats because these fields are worked in every season, not because food appears in a storehouse.",
         "Miner" => "Irondeep is hard country, but every sound vein strengthens Stonehaven's tools, gates, and guard.",
+        "Iron Miner" => "Irondeep is the valley's only iron vein. Ore counts only after I carry it home.",
         "Carpenter" => "A straight beam and a sound joint will outlast any hurried patchwork.",
         "Mason" => "Every fitted stone carries part of Stonehaven's defense.",
         "Hunter" => "I read tracks beyond the wall and bring warning home before trouble reaches the gate.",
@@ -491,8 +493,10 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
     private static string PrimarySkillFor(string role) => role switch
     {
         "Stonehaven Guard" => "Swordsmanship",
+        "A3 Mine Guard" => "Mine Defense",
         "Farmer" => "Farming",
         "Miner" => "Mining",
+        "Iron Miner" => "Iron Mining",
         "Carpenter" => "Carpentry",
         "Mason" => "Masonry",
         "Hunter" => "Tracking",

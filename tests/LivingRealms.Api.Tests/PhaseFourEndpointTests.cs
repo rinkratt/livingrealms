@@ -39,7 +39,7 @@ public sealed class PhaseFourEndpointTests : IClassFixture<PhaseTwoWebApplicatio
                 .SingleAsync();
             Assert.Equal(
                 factionPopulation,
-                creatures.Count(x => x.Role is "Chief" or "Raider" or "Clan Raider" or "Clan Hunter" or "Woodcutter" or "Stone Gatherer" or "Camp Guard" or "Scout"));
+                creatures.Count(x => x.Role is "Chief" or "Raider" or "Clan Raider" or "Clan Hunter" or "Woodcutter" or "Stone Gatherer" or "Iron Miner" or "Camp Guard" or "Scout"));
         }
         Assert.Equal(
             ["forest-rat", "goblin-chief", "goblin-raider", "prairie-wolf"],
