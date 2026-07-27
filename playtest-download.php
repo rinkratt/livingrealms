@@ -19,19 +19,9 @@ if (!is_file($packagePath) || !is_readable($packagePath)) {
 $email = $access['email'] ?? ($GLOBALS['config']['admin_email'] ?? null);
 record_player_access_event('download', true, is_string($email) ? $email : null);
 session_write_close();
-set_time_limit(0);
 
-header('Content-Type: application/zip');
-header('Content-Disposition: attachment; filename="' . $packageName . '"');
-header('Content-Length: ' . (string)filesize($packagePath));
-header('Cache-Control: private, no-store, max-age=0');
-header('X-Content-Type-Options: nosniff');
-while (ob_get_level() > 0) ob_end_clean();
-$handle = fopen($packagePath, 'rb');
-if ($handle === false) {
-    http_response_code(503);
-    exit;
-}
-fpassthru($handle);
-fclose($handle);
+// Authentication and activity logging happen here, but the web server should
+// transfer the large ZIP itself. Streaming it through PHP can be interrupted
+// by a FastCGI or proxy timeout and leave Windows with an incomplete archive.
+header('Location: /downloads/' . rawurlencode($packageName), true, 303);
 exit;
