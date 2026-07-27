@@ -47,7 +47,7 @@ work.
 - Iron is consumed by persistent weapon and armor upgrades.
 - Stonehaven may hire A3 guards for five gold per guard per world day.
 
-## Phase 6: faction banks
+## Phase 6: faction banks — complete in 0.9.16
 
 - Stonehaven and Darkwood have separate banks.
 - Each bank starts with zero resources and can only resell real inventory it

@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.15
+LIVING REALMS WINDOWS PLAYTEST 0.9.16
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,18 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.16
+- Adds a separate Stonehaven Exchange and Darkwood Clan Hoard.
+- Starts both banks with zero food, wood, stone, and iron; banks can resell
+  only supplies their own faction previously sold to them.
+- Automatically sells true settlement surpluses and buys shortages only when
+  the matching bank has inventory and the faction treasury can afford it.
+- Gives every resource a fixed bank purchase price and higher resale price.
+- Records every transaction with quantity, price, bank gold, faction gold,
+  and a Central-time ledger entry.
+- Shows both bank inventories, balances, reserve targets, shortages, prices,
+  and recent transactions on the Journey page.
 
 BUILD 0.9.15
 - Makes Irondeep in grid A3 the only source of newly created iron.

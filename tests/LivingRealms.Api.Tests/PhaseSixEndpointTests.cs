@@ -390,6 +390,99 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Contains(await database.WorldHistory.ToListAsync(), x => x.EventType == "irondeep_guard_contract");
     }
 
+    [Fact]
+    public async Task PhaseSixBanksBeginEmptyBuyOnlyRealSurplusAndResellTheirOwnInventory()
+    {
+        using var client = _factory.CreateClient();
+        await RegisterAsync(client);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/v1/world/reset", null)).StatusCode);
+
+        var initial = await client.GetFromJsonAsync<WorldStateResponse>("/api/v1/world/state", JsonOptions);
+        Assert.NotNull(initial);
+        Assert.Equal(300, initial.Banks.Stonehaven.BankGold);
+        Assert.Equal(300, initial.Banks.Darkwood.BankGold);
+        Assert.All(initial.Banks.Stonehaven.Inventory, x => Assert.Equal(0, x.BankQuantity));
+        Assert.All(initial.Banks.Darkwood.Inventory, x => Assert.Equal(0, x.BankQuantity));
+        Assert.Empty(initial.Banks.Stonehaven.RecentTransactions);
+        Assert.Empty(initial.Banks.Darkwood.RecentTransactions);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
+            var settlement = await database.Settlements
+                .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
+            settlement.Wood = 240;
+            settlement.Stone = 180;
+            var resources = await database.FactionResources
+                .Where(x => x.FactionId == LivingRealmsDbContext.DarkwoodClanId)
+                .ToDictionaryAsync(x => x.Kind);
+            resources[ResourceKind.Wood].Amount = 220;
+            resources[ResourceKind.Stone].Amount = 180;
+            await database.SaveChangesAsync();
+        }
+
+        var saleResponse = await client.PostAsJsonAsync(
+            "/api/v1/world/advance",
+            new AdvanceWorldRequest(1));
+        Assert.Equal(HttpStatusCode.OK, saleResponse.StatusCode);
+        var afterSales = await saleResponse.Content.ReadFromJsonAsync<AdvanceWorldResponse>(JsonOptions);
+        Assert.NotNull(afterSales);
+        var stonehavenWood = afterSales.World.Banks.Stonehaven.Inventory.Single(x => x.Kind == "Wood");
+        var darkwoodWood = afterSales.World.Banks.Darkwood.Inventory.Single(x => x.Kind == "Wood");
+        Assert.True(stonehavenWood.BankQuantity > 0);
+        Assert.True(darkwoodWood.BankQuantity > 0);
+        Assert.True(afterSales.World.Banks.Stonehaven.FactionGold > 30);
+        Assert.True(afterSales.World.Banks.Darkwood.FactionGold > 0);
+        Assert.Contains(
+            afterSales.World.Banks.Stonehaven.RecentTransactions,
+            x => x.Type == "FactionSold" && x.Kind == "Wood");
+
+        var bankWoodBeforeBuy = stonehavenWood.BankQuantity;
+        var treasuryBeforeBuy = afterSales.World.Banks.Stonehaven.FactionGold;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
+            var settlement = await database.Settlements
+                .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
+            settlement.Wood = 0;
+            await database.SaveChangesAsync();
+        }
+
+        var buyResponse = await client.PostAsJsonAsync(
+            "/api/v1/world/advance",
+            new AdvanceWorldRequest(1));
+        Assert.Equal(HttpStatusCode.OK, buyResponse.StatusCode);
+        var afterBuy = await buyResponse.Content.ReadFromJsonAsync<AdvanceWorldResponse>(JsonOptions);
+        Assert.NotNull(afterBuy);
+        var stonehavenWoodAfterBuy = afterBuy.World.Banks.Stonehaven.Inventory.Single(x => x.Kind == "Wood");
+        Assert.True(stonehavenWoodAfterBuy.BankQuantity < bankWoodBeforeBuy);
+        var woodPurchase = Assert.Single(
+            afterBuy.World.Banks.Stonehaven.RecentTransactions,
+            x => x.Type == "FactionBought" && x.Kind == "Wood");
+        Assert.True(woodPurchase.FactionGoldAfter < treasuryBeforeBuy);
+        Assert.Contains(
+            await ReadHistoryAsync(),
+            x => x.EventType == "bank_trade");
+
+        var resetResponse = await client.PostAsync("/api/v1/world/reset", null);
+        Assert.Equal(HttpStatusCode.OK, resetResponse.StatusCode);
+        var reset = await resetResponse.Content.ReadFromJsonAsync<WorldStateResponse>(JsonOptions);
+        Assert.NotNull(reset);
+        Assert.All(reset.Banks.Stonehaven.Inventory, x => Assert.Equal(0, x.BankQuantity));
+        Assert.All(reset.Banks.Darkwood.Inventory, x => Assert.Equal(0, x.BankQuantity));
+        Assert.Empty(reset.Banks.Stonehaven.RecentTransactions);
+        Assert.Empty(reset.Banks.Darkwood.RecentTransactions);
+        Assert.Equal(300, reset.Banks.Stonehaven.BankGold);
+        Assert.Equal(300, reset.Banks.Darkwood.BankGold);
+
+        async Task<List<WorldHistory>> ReadHistoryAsync()
+        {
+            using var scope = _factory.Services.CreateScope();
+            var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
+            return await database.WorldHistory.ToListAsync();
+        }
+    }
+
     private async Task RegisterAsync(HttpClient client, bool administrator = true)
     {
         var response = await client.PostAsJsonAsync(
@@ -423,6 +516,7 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         SettlementResponse Settlement,
         SurvivalResponse Survival,
         IronEconomyResponse IronEconomy,
+        FactionBanksResponse Banks,
         EventReadinessResponse EventReadiness,
         EventQueueResponse Events,
         IReadOnlyCollection<HistoryResponse> RecentHistory);
@@ -505,6 +599,34 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         int CurrentDailyCost,
         int TreasuryGold,
         IReadOnlyCollection<string> Names);
+    private sealed record FactionBanksResponse(
+        FactionBankResponse Stonehaven,
+        FactionBankResponse Darkwood);
+    private sealed record FactionBankResponse(
+        string Owner,
+        string Name,
+        int BankGold,
+        int FactionGold,
+        IReadOnlyCollection<BankInventoryResponse> Inventory,
+        IReadOnlyCollection<BankTransactionResponse> RecentTransactions);
+    private sealed record BankInventoryResponse(
+        string Kind,
+        int BankQuantity,
+        int BankBuyPrice,
+        int BankSellPrice,
+        long FactionStored,
+        int TargetReserve,
+        long Shortage);
+    private sealed record BankTransactionResponse(
+        string Type,
+        string Kind,
+        int Quantity,
+        int UnitPrice,
+        int TotalGold,
+        int BankGoldAfter,
+        int FactionGoldAfter,
+        string Description,
+        DateTimeOffset OccurredAtCentral);
     private sealed record SettlementLeaderResponse(
         string Name,
         string Title,

@@ -1556,6 +1556,7 @@ public partial class StonehavenValley : Node3D
         var stonehavenFood = FormatFoodEconomy("STONEHAVEN", state.Survival.Stonehaven);
         var darkwoodFood = FormatFoodEconomy("DARKWOOD", state.Survival.Darkwood);
         var ironEconomy = FormatIronEconomy(state.IronEconomy);
+        var factionBanks = FormatFactionBanks(state.Banks);
         var adminJobs = state.CanAccelerate
             ? $"\n\nADMIN SIMULATION JOBS\n{state.Events.Pending} pending   •   {state.Events.Completed} completed   •   {state.Events.Failed} failed"
             : string.Empty;
@@ -1575,6 +1576,7 @@ public partial class StonehavenValley : Node3D
             $"\nSURVIVAL & WORKERS\n{stonehavenFood}\n{darkwoodFood}\n" +
             $"Huntable wildlife: {state.Survival.Wildlife.Available}/{state.Survival.Wildlife.Total} active   •   {state.Survival.Wildlife.Respawning} respawning\n\n" +
             $"IRONDEEP & EQUIPMENT\n{ironEconomy}\n\n" +
+            $"FACTION BANKS\n{factionBanks}\n\n" +
             $"Destructible settlement assets:\n{structureSummary}\n" +
             $"Growth: at most one new resident per world day, only when housing and the required food, timber, and stone are available.\n\n" +
             "CAMPAIGN READINESS\nBattles become ready from living-world conditions, but only an online administrator can authorize their start." +
@@ -1638,6 +1640,25 @@ public partial class StonehavenValley : Node3D
             $"{operation.Owner}: {operation.MinerName}   •   {SplitPascalCase(operation.Status)}   •   " +
             $"cargo {operation.CargoIron}   •   delivered {operation.TotalIronDelivered} over {operation.TripsCompleted} trips   •   stores {operation.StoredIron}\n" +
             $"  Persistent equipment: weapons L{operation.WeaponTier} ({weaponNext})   •   armor L{operation.ArmorTier} ({armorNext})";
+    }
+
+    private static string FormatFactionBanks(WorldFactionBanksData banks) =>
+        $"{FormatFactionBank(banks.Stonehaven)}\n{FormatFactionBank(banks.Darkwood)}";
+
+    private static string FormatFactionBank(WorldFactionBankData bank)
+    {
+        var inventory = string.Join("   •   ", bank.Inventory.Select(item =>
+            $"{item.Kind.ToUpperInvariant()} bank {item.BankQuantity}, faction {item.FactionStored}/{item.TargetReserve}" +
+            (item.Shortage > 0 ? $" SHORT {item.Shortage}" : string.Empty) +
+            $", pays {item.BankBuyPrice}/charges {item.BankSellPrice}"));
+        var transactions = bank.RecentTransactions.Count == 0
+            ? "No purchases yet; every resource shelf started at zero."
+            : string.Join(" | ", bank.RecentTransactions.Take(3).Select(x =>
+                $"{x.OccurredAtCentral:MMM d h:mm tt} CST: {x.Description}"));
+        return
+            $"{bank.Name} ({bank.Owner})   •   bank gold {bank.BankGold}   •   faction treasury {bank.FactionGold}\n" +
+            $"  {inventory}\n" +
+            $"  Recent: {transactions}";
     }
 
     private static string SplitPascalCase(string value) =>
@@ -2390,6 +2411,31 @@ public partial class StonehavenValley : Node3D
                 "Darkwood", "Darkwood miner not yet assigned", "TravelingToMine",
                 -116, 0.08f, -104, 0, 0, 0, 5, 0, 12, 0, 10),
             new WorldMineGuardData(0, 5, 0, 30, [])),
+        new WorldFactionBanksData(
+            new WorldFactionBankData(
+                "Stonehaven",
+                "Stonehaven Exchange",
+                300,
+                30,
+                [
+                    new WorldBankInventoryData("Food", 0, 1, 2, 64, 88, 24, null, null),
+                    new WorldBankInventoryData("Wood", 0, 2, 3, 40, 80, 40, null, null),
+                    new WorldBankInventoryData("Stone", 0, 3, 5, 24, 60, 36, null, null),
+                    new WorldBankInventoryData("Iron", 0, 6, 9, 4, 10, 6, null, null)
+                ],
+                []),
+            new WorldFactionBankData(
+                "Darkwood",
+                "Darkwood Clan Vault",
+                300,
+                0,
+                [
+                    new WorldBankInventoryData("Food", 0, 1, 2, 80, 56, 0, null, null),
+                    new WorldBankInventoryData("Wood", 0, 2, 3, 50, 90, 40, null, null),
+                    new WorldBankInventoryData("Stone", 0, 3, 5, 15, 65, 50, null, null),
+                    new WorldBankInventoryData("Iron", 0, 6, 9, 5, 10, 5, null, null)
+                ],
+                [])),
         [
             new DestructibleStructureData(
                 Guid.Parse("83000000-0000-4000-8000-000000000001"),
@@ -5423,6 +5469,7 @@ public sealed record WorldStateData(
     WorldSettlementData Settlement,
     WorldSurvivalData Survival,
     WorldIronEconomyData IronEconomy,
+    WorldFactionBanksData Banks,
     IReadOnlyCollection<DestructibleStructureData> Structures,
     WorldEventReadinessData EventReadiness,
     WorldEventQueueData Events,
@@ -5534,6 +5581,36 @@ public sealed record WorldMineGuardData(
     int CurrentDailyCost,
     int TreasuryGold,
     IReadOnlyCollection<string> Names);
+public sealed record WorldFactionBanksData(
+    WorldFactionBankData Stonehaven,
+    WorldFactionBankData Darkwood);
+public sealed record WorldFactionBankData(
+    string Owner,
+    string Name,
+    int BankGold,
+    int FactionGold,
+    IReadOnlyCollection<WorldBankInventoryData> Inventory,
+    IReadOnlyCollection<WorldBankTransactionData> RecentTransactions);
+public sealed record WorldBankInventoryData(
+    string Kind,
+    int BankQuantity,
+    int BankBuyPrice,
+    int BankSellPrice,
+    long FactionStored,
+    int TargetReserve,
+    long Shortage,
+    DateTimeOffset? LastPurchasedCentral,
+    DateTimeOffset? LastSoldCentral);
+public sealed record WorldBankTransactionData(
+    string Type,
+    string Kind,
+    int Quantity,
+    int UnitPrice,
+    int TotalGold,
+    int BankGoldAfter,
+    int FactionGoldAfter,
+    string Description,
+    DateTimeOffset OccurredAtCentral);
 public sealed record WorldEventReadinessData(
     WorldTriggerReadinessData DarkwoodRaid,
     WorldTriggerReadinessData StonehavenCounterattack);

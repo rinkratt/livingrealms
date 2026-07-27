@@ -1773,6 +1773,9 @@ public partial class Main : Control
                 state.IronEconomy.StonehavenMineGuards.CurrentDailyCost,
                 state.IronEconomy.StonehavenMineGuards.TreasuryGold,
                 state.IronEconomy.StonehavenMineGuards.Names)),
+        new WorldFactionBanksData(
+            ToFactionBank(state.Banks.Stonehaven),
+            ToFactionBank(state.Banks.Darkwood)),
         state.Structures.Select(ToDestructibleStructure).ToArray(),
         new WorldEventReadinessData(
             new WorldTriggerReadinessData(
@@ -1811,6 +1814,33 @@ public partial class Main : Control
             operation.NextWeaponTierCost,
             operation.ArmorTier,
             operation.NextArmorTierCost);
+
+    private static WorldFactionBankData ToFactionBank(WorldFactionBankResponse bank) =>
+        new(
+            bank.Owner,
+            bank.Name,
+            bank.BankGold,
+            bank.FactionGold,
+            bank.Inventory.Select(x => new WorldBankInventoryData(
+                x.Kind,
+                x.BankQuantity,
+                x.BankBuyPrice,
+                x.BankSellPrice,
+                x.FactionStored,
+                x.TargetReserve,
+                x.Shortage,
+                x.LastPurchasedCentral,
+                x.LastSoldCentral)).ToArray(),
+            bank.RecentTransactions.Select(x => new WorldBankTransactionData(
+                x.Type,
+                x.Kind,
+                x.Quantity,
+                x.UnitPrice,
+                x.TotalGold,
+                x.BankGoldAfter,
+                x.FactionGoldAfter,
+                x.Description,
+                x.OccurredAtCentral)).ToArray());
 
     private static WorldFoodEconomyData ToFoodEconomy(WorldFoodEconomyResponse economy) => new(
         economy.Population,
@@ -2480,6 +2510,7 @@ public partial class Main : Control
         public WorldSettlementResponse Settlement { get; init; } = new();
         public WorldSurvivalResponse Survival { get; init; } = new();
         public WorldIronEconomyResponse IronEconomy { get; init; } = new();
+        public WorldFactionBanksResponse Banks { get; init; } = new();
         public DestructibleStructureResponse[] Structures { get; init; } = [];
         public WorldEventReadinessResponse EventReadiness { get; init; } = new();
         public WorldEventQueueResponse Events { get; init; } = new();
@@ -2631,6 +2662,48 @@ public partial class Main : Control
         public int CurrentDailyCost { get; init; }
         public int TreasuryGold { get; init; }
         public string[] Names { get; init; } = [];
+    }
+
+    private sealed class WorldFactionBanksResponse
+    {
+        public WorldFactionBankResponse Stonehaven { get; init; } = new();
+        public WorldFactionBankResponse Darkwood { get; init; } = new();
+    }
+
+    private sealed class WorldFactionBankResponse
+    {
+        public string Owner { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public int BankGold { get; init; }
+        public int FactionGold { get; init; }
+        public WorldBankInventoryResponse[] Inventory { get; init; } = [];
+        public WorldBankTransactionResponse[] RecentTransactions { get; init; } = [];
+    }
+
+    private sealed class WorldBankInventoryResponse
+    {
+        public string Kind { get; init; } = string.Empty;
+        public int BankQuantity { get; init; }
+        public int BankBuyPrice { get; init; }
+        public int BankSellPrice { get; init; }
+        public long FactionStored { get; init; }
+        public int TargetReserve { get; init; }
+        public long Shortage { get; init; }
+        public DateTimeOffset? LastPurchasedCentral { get; init; }
+        public DateTimeOffset? LastSoldCentral { get; init; }
+    }
+
+    private sealed class WorldBankTransactionResponse
+    {
+        public string Type { get; init; } = string.Empty;
+        public string Kind { get; init; } = string.Empty;
+        public int Quantity { get; init; }
+        public int UnitPrice { get; init; }
+        public int TotalGold { get; init; }
+        public int BankGoldAfter { get; init; }
+        public int FactionGoldAfter { get; init; }
+        public string Description { get; init; } = string.Empty;
+        public DateTimeOffset OccurredAtCentral { get; init; }
     }
 
     private sealed class WorldFoodEconomyResponse

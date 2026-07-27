@@ -27,6 +27,8 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public static readonly Guid DarkwoodIronOperationId = Guid.Parse("84000000-0000-4000-8000-000000000002");
     public static readonly Guid IrondeepOreNodeId = Guid.Parse("82000000-0000-4000-8000-000000000008");
     public static readonly Guid IrondeepMineStructureId = Guid.Parse("83000000-0000-4000-8000-000000000013");
+    public static readonly Guid StonehavenBankId = Guid.Parse("85000000-0000-4000-8000-000000000001");
+    public static readonly Guid DarkwoodBankId = Guid.Parse("85000000-0000-4000-8000-000000000002");
     public static readonly Guid AvelineResidentId = Guid.Parse("73000000-0000-4000-8000-000000000001");
     public static readonly Guid CedricResidentId = Guid.Parse("73000000-0000-4000-8000-000000000002");
     public static readonly Guid YsabelResidentId = Guid.Parse("73000000-0000-4000-8000-000000000003");
@@ -68,6 +70,9 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public DbSet<FactionResource> FactionResources => Set<FactionResource>();
     public DbSet<FactionStructure> FactionStructures => Set<FactionStructure>();
     public DbSet<IronMiningOperation> IronMiningOperations => Set<IronMiningOperation>();
+    public DbSet<FactionBank> FactionBanks => Set<FactionBank>();
+    public DbSet<FactionBankInventory> FactionBankInventory => Set<FactionBankInventory>();
+    public DbSet<FactionBankTransaction> FactionBankTransactions => Set<FactionBankTransaction>();
     public DbSet<WorldStructure> WorldStructures => Set<WorldStructure>();
     public DbSet<CreatureSpecies> CreatureSpecies => Set<CreatureSpecies>();
     public DbSet<Creature> Creatures => Set<Creature>();
@@ -89,6 +94,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
         ConfigureWorld(modelBuilder);
         ConfigureFactions(modelBuilder);
         ConfigureIronEconomy(modelBuilder);
+        ConfigureFactionBanks(modelBuilder);
         ConfigureCreatures(modelBuilder);
         ConfigureEvents(modelBuilder);
         ConfigureDevelopment(modelBuilder);
@@ -575,6 +581,78 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
                 });
         });
     }
+
+    private static void ConfigureFactionBanks(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<FactionBank>(entity =>
+        {
+            entity.HasIndex(x => x.Owner).IsUnique();
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.HasData(
+                new FactionBank
+                {
+                    Id = StonehavenBankId,
+                    Owner = ResourceOwner.Stonehaven,
+                    Name = "Stonehaven Exchange",
+                    GoldBalance = 300,
+                    CreatedAt = PhaseSixSeedTime,
+                    UpdatedAt = PhaseSixSeedTime
+                },
+                new FactionBank
+                {
+                    Id = DarkwoodBankId,
+                    Owner = ResourceOwner.Darkwood,
+                    Name = "Darkwood Clan Vault",
+                    GoldBalance = 300,
+                    CreatedAt = PhaseSixSeedTime,
+                    UpdatedAt = PhaseSixSeedTime
+                });
+        });
+        modelBuilder.Entity<FactionBankInventory>(entity =>
+        {
+            entity.HasIndex(x => new { x.BankId, x.Kind }).IsUnique();
+            entity.HasOne(x => x.Bank)
+                .WithMany(x => x.Inventory)
+                .HasForeignKey(x => x.BankId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasData(
+                CreateBankInventory("85100000-0000-4000-8000-000000000001", StonehavenBankId, ResourceKind.Food, 1, 2),
+                CreateBankInventory("85100000-0000-4000-8000-000000000002", StonehavenBankId, ResourceKind.Wood, 2, 3),
+                CreateBankInventory("85100000-0000-4000-8000-000000000003", StonehavenBankId, ResourceKind.Stone, 3, 5),
+                CreateBankInventory("85100000-0000-4000-8000-000000000004", StonehavenBankId, ResourceKind.Iron, 6, 9),
+                CreateBankInventory("85100000-0000-4000-8000-000000000005", DarkwoodBankId, ResourceKind.Food, 1, 2),
+                CreateBankInventory("85100000-0000-4000-8000-000000000006", DarkwoodBankId, ResourceKind.Wood, 2, 3),
+                CreateBankInventory("85100000-0000-4000-8000-000000000007", DarkwoodBankId, ResourceKind.Stone, 3, 5),
+                CreateBankInventory("85100000-0000-4000-8000-000000000008", DarkwoodBankId, ResourceKind.Iron, 6, 9));
+        });
+        modelBuilder.Entity<FactionBankTransaction>(entity =>
+        {
+            entity.HasIndex(x => new { x.BankId, x.OccurredAt });
+            entity.Property(x => x.Description).HasMaxLength(500);
+            entity.HasOne(x => x.Bank)
+                .WithMany(x => x.Transactions)
+                .HasForeignKey(x => x.BankId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static FactionBankInventory CreateBankInventory(
+        string id,
+        Guid bankId,
+        ResourceKind kind,
+        int bankBuyPrice,
+        int bankSellPrice) =>
+        new()
+        {
+            Id = Guid.Parse(id),
+            BankId = bankId,
+            Kind = kind,
+            Quantity = 0,
+            BankBuyPrice = bankBuyPrice,
+            BankSellPrice = bankSellPrice,
+            CreatedAt = PhaseSixSeedTime,
+            UpdatedAt = PhaseSixSeedTime
+        };
 
     private static void ConfigureCreatures(ModelBuilder modelBuilder)
     {

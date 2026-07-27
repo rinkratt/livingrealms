@@ -256,6 +256,42 @@ public sealed class IronMiningOperation : Entity
     public DateTimeOffset LastTransitionAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
+public sealed class FactionBank : Entity
+{
+    public ResourceOwner Owner { get; set; }
+    public required string Name { get; set; }
+    public int GoldBalance { get; set; }
+    public ICollection<FactionBankInventory> Inventory { get; set; } = [];
+    public ICollection<FactionBankTransaction> Transactions { get; set; } = [];
+}
+
+public sealed class FactionBankInventory : Entity
+{
+    public Guid BankId { get; set; }
+    public FactionBank Bank { get; set; } = null!;
+    public ResourceKind Kind { get; set; }
+    public int Quantity { get; set; }
+    public int BankBuyPrice { get; set; }
+    public int BankSellPrice { get; set; }
+    public DateTimeOffset? LastPurchasedAt { get; set; }
+    public DateTimeOffset? LastSoldAt { get; set; }
+}
+
+public sealed class FactionBankTransaction : Entity
+{
+    public Guid BankId { get; set; }
+    public FactionBank Bank { get; set; } = null!;
+    public BankTransactionType Type { get; set; }
+    public ResourceKind Kind { get; set; }
+    public int Quantity { get; set; }
+    public int UnitPrice { get; set; }
+    public int TotalGold { get; set; }
+    public int BankGoldAfter { get; set; }
+    public int FactionGoldAfter { get; set; }
+    public required string Description { get; set; }
+    public DateTimeOffset OccurredAt { get; set; }
+}
+
 public sealed class FactionResource : Entity
 {
     public Guid FactionId { get; set; }
@@ -466,6 +502,7 @@ public enum EquipmentSlot { Weapon, Armor }
 public enum ResourceKind { Food, Wood, Stone, Iron, Gold }
 public enum ResourceOwner { Stonehaven, Darkwood }
 public enum IronMiningStatus { TravelingToMine, Mining, ReturningHome, WaitingForOre }
+public enum BankTransactionType { FactionSold, FactionBought }
 public enum WorldStructureKind { Wall, Gate, Building, Farm, Mine, Dock, Stockpile }
 public enum CreatureStatus { Alive, Dead, Missing, Captured, Promoted, Retired }
 public enum ResidentStatus { Active, Injured, Missing, Dead }

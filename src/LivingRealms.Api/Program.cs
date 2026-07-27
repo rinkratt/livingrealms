@@ -70,7 +70,7 @@ builder.Services.AddRateLimiter(options =>
             {
                 // Play-test controls must remain usable even when combat has
                 // exhausted the much busier gameplay request bucket.
-                PermitLimit = 12,
+                PermitLimit = builder.Environment.IsEnvironment("Testing") ? 1000 : 12,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
                 AutoReplenishment = true

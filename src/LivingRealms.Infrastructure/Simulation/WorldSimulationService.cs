@@ -237,6 +237,7 @@ public sealed partial class WorldSimulationService(
             {
                 ResetIronOperation(operation, resetAt);
             }
+            await ResetFactionBanksAsync(resetAt, cancellationToken);
 
             if (assaults.Count > 0)
             {
@@ -562,7 +563,6 @@ public sealed partial class WorldSimulationService(
             (long)darkwoodFoodEconomy.NetFoodPerHour * payload.WorldHours);
         AddResource(resources[ResourceKind.Wood], 5L * payload.WorldHours);
         AddResource(resources[ResourceKind.Stone], 2L * payload.WorldHours);
-        AddResource(resources[ResourceKind.Gold], payload.WorldHours / 8L);
         settlement.Food = Math.Max(
             0,
             settlement.Food + stonehavenFoodEconomy.NetFoodPerHour * payload.WorldHours);
@@ -656,7 +656,6 @@ public sealed partial class WorldSimulationService(
             creatures,
             resources,
             cancellationToken);
-
         if (faction.DevelopmentStage == 1 &&
             faction.Population >= 8 &&
             resources[ResourceKind.Food].Amount >= 100 &&
@@ -689,6 +688,15 @@ public sealed partial class WorldSimulationService(
             AddStructure(faction, "Darkwood Watchtower", payload.ProcessedAt);
             AddStructure(faction, "Iron Workshop", payload.ProcessedAt);
         }
+
+        await AdvanceFactionBanksAsync(
+            payload.WorldHours,
+            payload.ProcessedAt,
+            faction,
+            settlement,
+            resources,
+            leader,
+            cancellationToken);
 
         leader.Experience += 12L * payload.WorldHours;
         var leaderLeveled = false;

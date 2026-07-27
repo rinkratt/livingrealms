@@ -255,6 +255,15 @@ public static class PhaseSixEndpoints
         var ironOperations = await database.IronMiningOperations.AsNoTracking()
             .OrderBy(x => x.Owner)
             .ToArrayAsync(cancellationToken);
+        var factionBanks = await database.FactionBanks.AsNoTracking()
+            .Include(x => x.Inventory)
+            .OrderBy(x => x.Owner)
+            .ToArrayAsync(cancellationToken);
+        var recentBankTransactions = await database.FactionBankTransactions.AsNoTracking()
+            .OrderByDescending(x => x.OccurredAt)
+            .ThenByDescending(x => x.CreatedAt)
+            .Take(12)
+            .ToArrayAsync(cancellationToken);
         var mineGuardNames = await database.SettlementResidents.AsNoTracking()
             .Where(x => x.SettlementId == settlement.Id &&
                         x.Role == "A3 Mine Guard" &&
@@ -370,6 +379,32 @@ public static class PhaseSixEndpoints
                     settlement.MineGuardCount * 5,
                     settlement.TreasuryGold,
                     mineGuardNames)),
+            new FactionBanksResponse(
+                ToBankResponse(
+                    factionBanks.Single(x => x.Owner == ResourceOwner.Stonehaven),
+                    settlement.TreasuryGold,
+                    kind => kind switch
+                    {
+                        ResourceKind.Food => settlement.Food,
+                        ResourceKind.Wood => settlement.Wood,
+                        ResourceKind.Stone => settlement.Stone,
+                        ResourceKind.Iron => settlement.Iron,
+                        _ => 0
+                    },
+                    settlement.Population,
+                    1,
+                    settlement.WeaponTier,
+                    settlement.ArmorTier,
+                    recentBankTransactions),
+                ToBankResponse(
+                    factionBanks.Single(x => x.Owner == ResourceOwner.Darkwood),
+                    checked((int)faction.Resources.Single(x => x.Kind == ResourceKind.Gold).Amount),
+                    kind => faction.Resources.Single(x => x.Kind == kind).Amount,
+                    faction.Population,
+                    faction.DevelopmentStage,
+                    faction.WeaponTier,
+                    faction.ArmorTier,
+                    recentBankTransactions)),
             destructibleStructures,
             new WorldEventReadinessResponse(
                 new TriggerReadinessResponse(
@@ -447,6 +482,63 @@ public static class PhaseSixEndpoints
             armorTier,
             armorTier >= 3 ? null : (armorTier + 1) * 10);
 
+    private static FactionBankResponse ToBankResponse(
+        FactionBank bank,
+        int factionGold,
+        Func<ResourceKind, long> getStored,
+        int population,
+        int developmentStage,
+        int weaponTier,
+        int armorTier,
+        IReadOnlyCollection<FactionBankTransaction> recentTransactions)
+    {
+        var inventory = bank.Inventory
+            .OrderBy(x => x.Kind)
+            .Select(x =>
+            {
+                var stored = getStored(x.Kind);
+                var target = FactionBankRules.TargetReserve(
+                    bank.Owner,
+                    x.Kind,
+                    population,
+                    developmentStage,
+                    weaponTier,
+                    armorTier);
+                return new BankInventoryResponse(
+                    x.Kind.ToString(),
+                    x.Quantity,
+                    x.BankBuyPrice,
+                    x.BankSellPrice,
+                    stored,
+                    target,
+                    Math.Max(0, target - stored),
+                    x.LastPurchasedAt is null ? null : CentralClock.Convert(x.LastPurchasedAt.Value),
+                    x.LastSoldAt is null ? null : CentralClock.Convert(x.LastSoldAt.Value));
+            })
+            .ToArray();
+        var transactions = recentTransactions
+            .Where(x => x.BankId == bank.Id)
+            .Take(6)
+            .Select(x => new BankTransactionResponse(
+                x.Type.ToString(),
+                x.Kind.ToString(),
+                x.Quantity,
+                x.UnitPrice,
+                x.TotalGold,
+                x.BankGoldAfter,
+                x.FactionGoldAfter,
+                x.Description,
+                CentralClock.Convert(x.OccurredAt)))
+            .ToArray();
+        return new FactionBankResponse(
+            bank.Owner.ToString(),
+            bank.Name,
+            bank.GoldBalance,
+            factionGold,
+            inventory,
+            transactions);
+    }
+
     private static string FormatAssaultPhase(StonehavenAssaultStatus status) => status switch
     {
         StonehavenAssaultStatus.Assembling => "Guard Captain Mira is assembling the counterattack at Stonehaven's gate.",
@@ -473,6 +565,7 @@ public static class PhaseSixEndpoints
         SettlementResponse Settlement,
         SurvivalResponse Survival,
         IronEconomyResponse IronEconomy,
+        FactionBanksResponse Banks,
         IReadOnlyCollection<WorldStructureState> Structures,
         WorldEventReadinessResponse EventReadiness,
         EventQueueResponse Events,
@@ -579,6 +672,36 @@ public static class PhaseSixEndpoints
         int CurrentDailyCost,
         int TreasuryGold,
         IReadOnlyCollection<string> Names);
+    public sealed record FactionBanksResponse(
+        FactionBankResponse Stonehaven,
+        FactionBankResponse Darkwood);
+    public sealed record FactionBankResponse(
+        string Owner,
+        string Name,
+        int BankGold,
+        int FactionGold,
+        IReadOnlyCollection<BankInventoryResponse> Inventory,
+        IReadOnlyCollection<BankTransactionResponse> RecentTransactions);
+    public sealed record BankInventoryResponse(
+        string Kind,
+        int BankQuantity,
+        int BankBuyPrice,
+        int BankSellPrice,
+        long FactionStored,
+        int TargetReserve,
+        long Shortage,
+        DateTimeOffset? LastPurchasedCentral,
+        DateTimeOffset? LastSoldCentral);
+    public sealed record BankTransactionResponse(
+        string Type,
+        string Kind,
+        int Quantity,
+        int UnitPrice,
+        int TotalGold,
+        int BankGoldAfter,
+        int FactionGoldAfter,
+        string Description,
+        DateTimeOffset OccurredAtCentral);
     public sealed record SettlementLeaderResponse(
         Guid Id,
         string Name,
