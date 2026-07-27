@@ -224,6 +224,8 @@ public static class PhaseSixEndpoints
             x.Description,
             x.ImportanceLevel,
             CentralClock.Convert(x.OccurredAt))).ToArray();
+        var destructibleStructures = await new WorldStructureService(database)
+            .GetStatesAsync(cancellationToken: cancellationToken);
 
         var resources = faction.Resources
             .OrderBy(x => x.Kind)
@@ -299,6 +301,7 @@ public static class PhaseSixEndpoints
                     stonehavenLeader.Trait,
                     stonehavenLeader.IsMajor,
                     stonehavenLeader.MemorySummary)),
+            destructibleStructures,
             new WorldEventReadinessResponse(
                 new TriggerReadinessResponse(
                     "Darkwood raid on Stonehaven",
@@ -361,6 +364,7 @@ public static class PhaseSixEndpoints
         bool CanAccelerate,
         FactionResponse Faction,
         SettlementResponse Settlement,
+        IReadOnlyCollection<WorldStructureState> Structures,
         WorldEventReadinessResponse EventReadiness,
         EventQueueResponse Events,
         IReadOnlyCollection<HistoryResponse> RecentHistory,

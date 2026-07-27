@@ -4,7 +4,8 @@ namespace LivingRealms.Client;
 
 public partial class StonehavenValley : Node3D
 {
-    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.11";
+    private static readonly string FeedbackUrl =
+        $"https://living-realms.com/feedback.php?source=game&build={BuildInfo.Version}";
     private const float KnockoutProtectionDuration = 8.0f;
     private const float TargetCycleRadius = 32.0f;
     private const float WorldGridSize = 96.0f;
@@ -54,6 +55,8 @@ public partial class StonehavenValley : Node3D
     private readonly Dictionary<Guid, HarvestResourceNode> _resourceNodes = [];
     private readonly List<NaturalResourceTarget> _naturalResourceTargets = [];
     private readonly Dictionary<Guid, ConstructionProjectData> _constructionProjects = [];
+    private readonly Dictionary<string, DestructibleStructureData> _destructibleStructures =
+        new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, WorldSkillData> _skills = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<RoamingDragon> _roamingDragons = [];
     private readonly List<WorldPathObstacle> _pathObstacles = [];
@@ -93,6 +96,7 @@ public partial class StonehavenValley : Node3D
     private Button _refreshWorldButton = null!;
     private Node3D _darkwoodCamp = null!;
     private Node3D _constructionRoot = null!;
+    private Node3D _structureStateRoot = null!;
     private Node3D? _stylizedEnvironmentRoot;
     private Button _menuSaveButton = null!;
     private Button _menuReturnButton = null!;
@@ -203,6 +207,8 @@ public partial class StonehavenValley : Node3D
         RefreshLoadedWorldRegions(_requestedSpawn, true);
         _constructionRoot = new Node3D { Name = "PersistentConstruction" };
         AddChild(_constructionRoot);
+        _structureStateRoot = new Node3D { Name = "PersistentStructureState" };
+        AddChild(_structureStateRoot);
         BuildWorldPathfinder();
         SpawnPlayer();
         SpawnRoamingDragons();
@@ -723,6 +729,7 @@ public partial class StonehavenValley : Node3D
         {
             _constructionProjects[project.Id] = project;
         }
+        ApplyDestructibleStructures(state.Structures);
         if (IsInstanceValid(_developmentHudLabel))
         {
             var wall = state.Projects.FirstOrDefault(x =>
@@ -733,6 +740,233 @@ public partial class StonehavenValley : Node3D
                   $"WALL L{wall.CurrentLevel}/{wall.MaximumLevel}  {wall.Progress:P0}";
         }
         RebuildConstructionVisuals(state.Projects);
+    }
+
+    private void ApplyDestructibleStructures(IEnumerable<DestructibleStructureData> structures)
+    {
+        var incoming = structures.ToArray();
+        var changed = incoming.Length != _destructibleStructures.Count ||
+                      incoming.Any(candidate =>
+                          !_destructibleStructures.TryGetValue(candidate.Key, out var existing) ||
+                          existing.Health != candidate.Health ||
+                          existing.MaximumHealth != candidate.MaximumHealth ||
+                          existing.IsBuilt != candidate.IsBuilt ||
+                          existing.BlocksMovement != candidate.BlocksMovement ||
+                          !existing.Status.Equals(candidate.Status, StringComparison.OrdinalIgnoreCase));
+        _destructibleStructures.Clear();
+        foreach (var structure in incoming)
+        {
+            _destructibleStructures[structure.Key] = structure;
+        }
+        if (!changed)
+        {
+            return;
+        }
+
+        RebuildStructureStateVisuals();
+        ApplyStructureNodeVisibility();
+        if (_pathfinder is not null)
+        {
+            _pathfinder.SetPassableAreas(_destructibleStructures.Values
+                .Where(x => x.IsBuilt && !x.BlocksMovement)
+                .Select(StructurePassage));
+        }
+        if (IsInstanceValid(_constructionRoot) && _constructionProjects.Count > 0)
+        {
+            RebuildConstructionVisuals(_constructionProjects.Values);
+        }
+    }
+
+    private void RebuildStructureStateVisuals()
+    {
+        if (!IsInstanceValid(_structureStateRoot))
+        {
+            return;
+        }
+        foreach (var child in _structureStateRoot.GetChildren())
+        {
+            child.QueueFree();
+        }
+
+        foreach (var structure in _destructibleStructures.Values.Where(x => x.IsBuilt))
+        {
+            var ratio = Mathf.Clamp(
+                (float)structure.Health / Math.Max(1, structure.MaximumHealth),
+                0,
+                1);
+            var filled = Math.Clamp(Mathf.RoundToInt(ratio * 10), 0, 10);
+            var bar = new string('█', filled) + new string('░', 10 - filled);
+            var color = structure.Status switch
+            {
+                "Destroyed" => new Color("f0644c"),
+                "Breached" or "Critical" => new Color("ff7b58"),
+                "Damaged" => new Color("e9b54a"),
+                _ => structure.Owner.Equals("Stonehaven", StringComparison.OrdinalIgnoreCase)
+                    ? new Color("d8a94b")
+                    : new Color("d35a45")
+            };
+            var indicator = new Label3D
+            {
+                Name = $"Structure-{structure.Key}",
+                Text = $"{structure.Name.ToUpperInvariant()}  •  {structure.Status.ToUpperInvariant()}\n" +
+                       $"{bar}  HP {structure.Health}/{structure.MaximumHealth}  •  ARMOR {structure.Armor}",
+                Position = structure.Position + new Vector3(0, StructureLabelHeight(structure.Kind), 0),
+                FontSize = 22,
+                Modulate = color,
+                OutlineSize = 7,
+                OutlineModulate = new Color(0, 0, 0, 0.94f),
+                Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+                VisibilityRangeEnd = structure.Status.Equals("Healthy", StringComparison.OrdinalIgnoreCase)
+                    ? 24.0f
+                    : 42.0f
+            };
+            _structureStateRoot.AddChild(indicator);
+
+            if (!structure.Status.Equals("Destroyed", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            for (var rubble = 0; rubble < 5; rubble++)
+            {
+                var offset = new Vector3(
+                    (rubble % 3 - 1) * 0.75f,
+                    0.18f + (rubble % 2) * 0.14f,
+                    (rubble / 3 - 0.5f) * 0.8f);
+                var debris = CreateMesh(
+                    $"Rubble-{structure.Key}-{rubble}",
+                    new BoxMesh
+                    {
+                        Size = new Vector3(
+                            0.7f + rubble % 2 * 0.25f,
+                            0.35f + rubble % 3 * 0.12f,
+                            0.65f + (rubble + 1) % 2 * 0.3f)
+                    },
+                    structure.Position + offset,
+                    new Vector3(0.15f * rubble, 0.47f * rubble, 0.08f * rubble),
+                    structure.Kind is "Wall" or "Gate"
+                        ? new Color("514f4a")
+                        : new Color("4f3424"));
+                _structureStateRoot.AddChild(debris);
+            }
+        }
+    }
+
+    private void ApplyStructureNodeVisibility()
+    {
+        foreach (var structure in _destructibleStructures.Values.Where(x => x.IsBuilt))
+        {
+            var prefixes = StructureVisualPrefixes(structure.Key);
+            if (prefixes.Length == 0)
+            {
+                continue;
+            }
+            var intact = structure.Health > 0;
+            foreach (var node in EnumerateDescendants(this))
+            {
+                if (!prefixes.Any(prefix =>
+                        node.Name.ToString().StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+                if (node is Node3D node3D)
+                {
+                    node3D.Visible = intact;
+                }
+                if (node is StaticBody3D body)
+                {
+                    body.CollisionLayer = intact ? 1u : 0u;
+                    body.CollisionMask = intact ? 2u | 4u | 8u : 0u;
+                }
+                if (node is CollisionShape3D collision)
+                {
+                    collision.SetDeferred(CollisionShape3D.PropertyName.Disabled, !intact);
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<Node> EnumerateDescendants(Node parent)
+    {
+        foreach (var child in parent.GetChildren())
+        {
+            yield return child;
+            foreach (var descendant in EnumerateDescendants(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    private static string[] StructureVisualPrefixes(string key) => key switch
+    {
+        "stonehaven-gate" => ["GateLeft", "GateRight", "GateBeam", "GateRoof", "GateBanner", "GateCrest"],
+        "stonehaven-blacksmith" => ["Blacksmith"],
+        "stonehaven-inn" => ["WayfarerInn", "InnLabel"],
+        "stonehaven-herbalist" => ["Herbalist"],
+        "stonehaven-storehouse" => ["Storehouse"],
+        "stonehaven-west-farmhouse" => ["WestFarmhouse"],
+        "stonehaven-east-farmhouse" => ["EastFarmhouse"],
+        "stonehaven-farm-1" => ["FarmPlot1"],
+        "stonehaven-farm-2" => ["FarmPlot2"],
+        "stonehaven-farm-3" => ["FarmPlot3"],
+        "stonehaven-farm-4" => ["FarmPlot4"],
+        "stonehaven-farm-5" => ["FarmPlot5"],
+        "stonehaven-farm-6" => ["FarmPlot6"],
+        "stonehaven-farm-7" => ["FarmPlot7"],
+        "stonehaven-farm-8" => ["FarmPlot8"],
+        "irondeep-mine" => ["IrondeepMine", "IrondeepRock", "IrondeepOreCart"],
+        "mirrorwater-dock" => ["MirrorwaterDock"],
+        _ => []
+    };
+
+    private static float StructureLabelHeight(string kind) => kind switch
+    {
+        "Wall" or "Gate" => 4.5f,
+        "Building" or "Stockpile" => 5.2f,
+        "Mine" => 7.0f,
+        "Dock" or "Farm" => 2.6f,
+        _ => 3.5f
+    };
+
+    private static WorldPathObstacle StructurePassage(DestructibleStructureData structure)
+    {
+        var size = structure.Kind switch
+        {
+            "Wall" when structure.Key.Contains("north", StringComparison.OrdinalIgnoreCase) =>
+                new Vector3(24, 5, 3.5f),
+            "Wall" when structure.Key.Contains("south", StringComparison.OrdinalIgnoreCase) =>
+                new Vector3(58, 5, 3.5f),
+            "Wall" => new Vector3(3.5f, 5, 40),
+            "Gate" => new Vector3(12, 7, 8),
+            "Dock" => new Vector3(32, 3, 8),
+            "Farm" => new Vector3(18, 2, 19),
+            "Mine" => new Vector3(18, 8, 12),
+            _ => new Vector3(9, 6, 8)
+        };
+        return WorldPathObstacle.FromBox(structure.Position, size);
+    }
+
+    private static string FormatStructureSummary(IEnumerable<DestructibleStructureData> structures)
+    {
+        static string OwnerSummary(
+            string owner,
+            IEnumerable<DestructibleStructureData> all)
+        {
+            var built = all.Where(x =>
+                    x.Owner.Equals(owner, StringComparison.OrdinalIgnoreCase) && x.IsBuilt)
+                .ToArray();
+            var totalHealth = built.Sum(x => x.Health);
+            var totalMaximum = built.Sum(x => x.MaximumHealth);
+            var damaged = built
+                .Where(x => !x.Status.Equals("Healthy", StringComparison.OrdinalIgnoreCase))
+                .Select(x => $"{x.Name} {x.Status.ToUpperInvariant()} {x.Health}/{x.MaximumHealth}")
+                .ToArray();
+            return $"{owner.ToUpperInvariant()}  {totalHealth}/{totalMaximum} HP across {built.Length} built assets" +
+                   (damaged.Length == 0 ? "  •  all healthy" : $"\n  {string.Join("  •  ", damaged)}");
+        }
+
+        var allStructures = structures.ToArray();
+        return $"{OwnerSummary("Stonehaven", allStructures)}\n{OwnerSummary("Darkwood", allStructures)}";
     }
 
     private void OnResourceWorkPulse(string workerKey)
@@ -858,13 +1092,14 @@ public partial class StonehavenValley : Node3D
         for (var index = 0; index < segments.Count; index++)
         {
             var segment = segments[index];
+            var structureKey = ResolveStonehavenWallStructureKey(segment.Position);
             AddConstructionMesh(
                 $"StonehavenFoundation{index}",
                 new BoxMesh { Size = new Vector3(segment.Size.X + 0.10f, 0.28f, segment.Size.Z + 0.10f) },
                 segment.Position + new Vector3(0, 0.14f, 0),
                 Vector3.Zero,
                 new Color("4a4945"));
-            if (index < built)
+            if (index < built && IsStructureBlocking(structureKey))
             {
                 AddConstructionBox(
                     $"StonehavenBuiltWall{index}",
@@ -935,13 +1170,14 @@ public partial class StonehavenValley : Node3D
             var tangent = new Vector3(-Mathf.Sin(angle), 0, Mathf.Cos(angle));
             var position = DarkwoodCampCenter + radial * 17.0f;
             var rotation = new Vector3(0, -angle - Mathf.Pi * 0.5f, 0);
+            var structureKey = ResolveDarkwoodPalisadeStructureKey(radial);
             AddConstructionMesh(
                 $"DarkwoodStakeLine{index}",
                 new BoxMesh { Size = new Vector3(3.25f, 0.12f, 0.45f) },
                 position + new Vector3(0, 0.06f, 0),
                 rotation,
                 new Color("3b2718"));
-            if (builtSegments.Contains(index))
+            if (builtSegments.Contains(index) && IsStructureBlocking(structureKey))
             {
                 AddConstructionCollisionBox(
                     $"DarkwoodBuiltPalisade{index}",
@@ -970,6 +1206,17 @@ public partial class StonehavenValley : Node3D
 
     private void BuildConstructionBuilding(ConstructionProjectData project)
     {
+        var structureKey = project.Key switch
+        {
+            "stonehaven-lumber-yard" => "stonehaven-lumber-yard",
+            "stonehaven-quarry-works" => "stonehaven-quarry-works",
+            "darkwood-supply-hut" => "darkwood-supply-hut",
+            _ => string.Empty
+        };
+        if (!string.IsNullOrEmpty(structureKey) && !IsStructureBlocking(structureKey))
+        {
+            return;
+        }
         var darkwood = project.Owner.Equals("Darkwood", StringComparison.OrdinalIgnoreCase);
         var timber = darkwood ? new Color("4b2d1b") : new Color("72502f");
         var stone = darkwood ? new Color("403b37") : new Color("696a65");
@@ -1018,6 +1265,41 @@ public partial class StonehavenValley : Node3D
             }, buildingPosition + new Vector3(0, 3.6f, 0), new Vector3(0, Mathf.DegToRad(45), 0),
                 darkwood ? new Color("391713") : new Color("593124"));
         }
+    }
+
+    private bool IsStructureBlocking(string key) =>
+        !_destructibleStructures.TryGetValue(key, out var structure) ||
+        !structure.IsBuilt ||
+        structure.BlocksMovement;
+
+    private static string ResolveStonehavenWallStructureKey(Vector3 position)
+    {
+        if (MathF.Abs(position.Z - 3.5f) < 1.0f)
+        {
+            return position.X < 0
+                ? "stonehaven-wall-northwest"
+                : "stonehaven-wall-northeast";
+        }
+        if (MathF.Abs(position.Z + 36.0f) < 1.0f)
+        {
+            return "stonehaven-wall-south";
+        }
+        return position.X < 0
+            ? "stonehaven-wall-west"
+            : "stonehaven-wall-east";
+    }
+
+    private static string ResolveDarkwoodPalisadeStructureKey(Vector3 radial)
+    {
+        if (MathF.Abs(radial.X) >= MathF.Abs(radial.Z))
+        {
+            return radial.X >= 0
+                ? "darkwood-palisade-east"
+                : "darkwood-palisade-west";
+        }
+        return radial.Z >= 0
+            ? "darkwood-palisade-south"
+            : "darkwood-palisade-north";
     }
 
     private void AddWallScaffold(Vector3 position, Vector3 size)
@@ -1251,6 +1533,7 @@ public partial class StonehavenValley : Node3D
         }
 
         var faction = state.Faction;
+        ApplyDestructibleStructures(state.Structures);
         _worldHudLabel.Text = $"WORLD DAY {state.WorldDay}  •  DARKWOOD: {faction.StageName.ToUpperInvariant()}";
         _worldSummary.Text =
             $"WORLD DAY {state.WorldDay}   •   {state.SimulationSpeed.ToUpperInvariant()}\n" +
@@ -1268,6 +1551,7 @@ public partial class StonehavenValley : Node3D
                 : faction.Leader.Level >= 10 ? "HIGH" : "RISING";
         var darkwoodRaid = state.EventReadiness.DarkwoodRaid;
         var counterattack = state.EventReadiness.StonehavenCounterattack;
+        var structureSummary = FormatStructureSummary(state.Structures);
         var adminJobs = state.CanAccelerate
             ? $"\n\nADMIN SIMULATION JOBS\n{state.Events.Pending} pending   •   {state.Events.Completed} completed   •   {state.Events.Failed} failed"
             : string.Empty;
@@ -1284,6 +1568,7 @@ public partial class StonehavenValley : Node3D
             $"MEMORY   {state.Settlement.Leader.MemorySummary}\n" +
             $"Population: {state.Settlement.LivingResidents}/{state.Settlement.HousingCapacity} housed named residents   •   combat-ready {state.Settlement.CombatReadyResidents}   •   defense rating {state.Settlement.DefenseRating}   •   military power {state.Settlement.GuardStrength}\n" +
             $"Village supplies: food {state.Settlement.Food}   •   wood {state.Settlement.Wood}   •   stone {state.Settlement.Stone}   •   iron {state.Settlement.Iron}\n" +
+            $"Destructible settlement assets:\n{structureSummary}\n" +
             $"Growth: at most one new resident per world day, only when housing and the required food, timber, stone, and iron are available.\n\n" +
             "CAMPAIGN READINESS\nBattles become ready from living-world conditions, but only an online administrator can authorize their start." +
             adminJobs;
@@ -1986,6 +2271,40 @@ public partial class StonehavenValley : Node3D
                 "Pragmatic",
                 true,
                 "Aldric keeps Stonehaven's stores, work assignments, and defenses accountable.")),
+        [
+            new DestructibleStructureData(
+                Guid.Parse("83000000-0000-4000-8000-000000000001"),
+                "stonehaven-gate",
+                "Stonehaven Main Gate",
+                "Stonehaven",
+                "Gate",
+                1800,
+                1800,
+                12,
+                true,
+                true,
+                "Healthy",
+                0,
+                new Vector3(0, 0.08f, 3.5f),
+                null,
+                null),
+            new DestructibleStructureData(
+                Guid.Parse("83000000-0000-4000-8000-000000000029"),
+                "darkwood-hide-tents",
+                "Darkwood Hide Tents",
+                "Darkwood",
+                "Building",
+                800,
+                800,
+                4,
+                true,
+                true,
+                "Healthy",
+                0,
+                new Vector3(-119, 0.08f, -107),
+                null,
+                null)
+        ],
         new WorldEventReadinessData(
             new WorldTriggerReadinessData(
                 "Darkwood raid on Stonehaven",
@@ -4959,6 +5278,7 @@ public sealed record WorldStateData(
     bool CanAccelerate,
     WorldFactionData Faction,
     WorldSettlementData Settlement,
+    IReadOnlyCollection<DestructibleStructureData> Structures,
     WorldEventReadinessData EventReadiness,
     WorldEventQueueData Events,
     IReadOnlyCollection<WorldHistoryData> RecentHistory);
@@ -5032,6 +5352,7 @@ public sealed record WorldHistoryData(string Title, string Description, DateTime
 public sealed record DevelopmentStateData(
     IReadOnlyCollection<ResourceNodeData> Nodes,
     IReadOnlyCollection<ConstructionProjectData> Projects,
+    IReadOnlyCollection<DestructibleStructureData> Structures,
     IReadOnlyCollection<ResourceContributionData> RecentContributions,
     int SettlementWood,
     int SettlementStone);
@@ -5063,6 +5384,23 @@ public sealed record ConstructionProjectData(
     string Stage,
     Vector3 Position,
     DateTimeOffset? CompletedAt);
+
+public sealed record DestructibleStructureData(
+    Guid Id,
+    string Key,
+    string Name,
+    string Owner,
+    string Kind,
+    int Health,
+    int MaximumHealth,
+    int Armor,
+    bool IsBuilt,
+    bool BlocksMovement,
+    string Status,
+    int ProjectLevel,
+    Vector3 Position,
+    DateTimeOffset? LastDamagedAt,
+    DateTimeOffset? DestroyedAt);
 
 public sealed record ResourceContributionData(
     string ContributorName,

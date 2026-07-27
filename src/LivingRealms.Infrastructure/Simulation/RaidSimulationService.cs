@@ -9,6 +9,7 @@ public sealed partial class RaidSimulationService(
     LivingRealmsDbContext database,
     WorldPopulationService population,
     FactionLeadershipService leadership,
+    WorldStructureService structures,
     ILogger<RaidSimulationService> logger)
 {
     private static readonly TimeSpan OnlineRaidRoundInterval = TimeSpan.FromSeconds(10);
@@ -400,7 +401,14 @@ public sealed partial class RaidSimulationService(
                              x.Status == CreatureStatus.Alive &&
                              x.Health > 0,
                 cancellationToken);
-        var campStrength = 750;
+        var campStrength = await structures.GetRemainingHealthAsync(
+            ResourceOwner.Darkwood,
+            cancellationToken);
+        if (campStrength <= 0)
+        {
+            throw new InvalidOperationException(
+                "Darkwood has no standing camp structures for Stonehaven to attack.");
+        }
         var assault = new StonehavenAssault
         {
             SettlementId = settlement.Id,
@@ -534,7 +542,12 @@ public sealed partial class RaidSimulationService(
             {
                 var campDamage = LivingAssaultMembers(assault.Members).Sum(member =>
                     Math.Max(5, SoldierAttackPower(member.Resident) / 2));
-                assault.CampStrength = Math.Max(0, assault.CampStrength - campDamage);
+                var structureDamage = await structures.DamageOwnerAsync(
+                    ResourceOwner.Darkwood,
+                    campDamage,
+                    advancedAt,
+                    cancellationToken);
+                assault.CampStrength = structureDamage.OwnerHealthRemaining;
                 if (assault.CampStrength == 0)
                 {
                     await ResolveStonehavenAssaultAsync(assault, stonehavenWon: true, goblins, advancedAt, cancellationToken);
@@ -890,11 +903,16 @@ public sealed partial class RaidSimulationService(
                 160);
             raid.Settlement.StructuralIntegrity = Math.Max(0,
                 raid.Settlement.StructuralIntegrity - raid.SettlementDamage);
+            var structureImpact = await structures.DamageOwnerAsync(
+                ResourceOwner.Stonehaven,
+                Math.Max(12, raid.SettlementDamage / 2),
+                resolvedAt,
+                cancellationToken);
             raid.AttackingFaction.Morale = Math.Max(0, raid.AttackingFaction.Morale - 6);
             raid.ResidentInjuries = raid.Settlement.Residents.Count(x => x.Status == ResidentStatus.Injured);
             raid.OutcomeSummary = raid.PlayerContribution > 0
-                ? $"Stonehaven repelled the raid. Players contributed {raid.PlayerContribution} strength; the village suffered {raid.SettlementDamage} structural damage and lost {raid.ResidentCasualties} defender(s)."
-                : $"Stonehaven's guards repelled the raid, suffered {raid.SettlementDamage} structural damage, and lost {raid.ResidentCasualties} defender(s).";
+                ? $"Stonehaven repelled the raid. Players contributed {raid.PlayerContribution} strength; the village suffered {raid.SettlementDamage} structural damage, including {structureImpact.DamageApplied} persistent structure damage, and lost {raid.ResidentCasualties} defender(s)."
+                : $"Stonehaven's guards repelled the raid, suffered {raid.SettlementDamage} structural damage, including {structureImpact.DamageApplied} persistent structure damage, and lost {raid.ResidentCasualties} defender(s).";
         }
         else
         {
@@ -906,6 +924,19 @@ public sealed partial class RaidSimulationService(
             raid.Settlement.Food = Math.Max(0, raid.Settlement.Food - 80);
             raid.Settlement.Wood = Math.Max(0, raid.Settlement.Wood - 40);
             raid.Settlement.Iron = Math.Max(0, raid.Settlement.Iron - 10);
+            WorldStructureDamageResult? structureImpact = null;
+            for (var strike = 0; strike < 8 && structureImpact?.Destroyed != true; strike++)
+            {
+                structureImpact = await structures.DamageOwnerAsync(
+                    ResourceOwner.Stonehaven,
+                    raid.SettlementDamage,
+                    resolvedAt,
+                    cancellationToken);
+                if (structureImpact.StructureKey is null)
+                {
+                    break;
+                }
+            }
             raid.ResidentCasualties += ApplyCivilianConsequences(raid.Settlement.Residents, resolvedAt);
             raid.ResidentInjuries = raid.Settlement.Residents.Count(x => x.Status == ResidentStatus.Injured);
             raid.AttackingFaction.Morale = Math.Min(100, raid.AttackingFaction.Morale + 8);
@@ -916,7 +947,9 @@ public sealed partial class RaidSimulationService(
             }
             var survivingRaiders = GetLivingAttackers(raid.Attackers).Length;
             raid.OutcomeSummary =
-                $"Darkwood breached Stonehaven, caused {raid.SettlementDamage} structural damage, injured {raid.ResidentInjuries}, and killed {raid.ResidentCasualties} resident(s). " +
+                $"Darkwood breached Stonehaven, caused {raid.SettlementDamage} settlement damage, " +
+                $"{(structureImpact?.Destroyed == true ? $"destroyed {structureImpact.StructureKey}, " : "damaged its defenses, ")}" +
+                $"injured {raid.ResidentInjuries}, and killed {raid.ResidentCasualties} resident(s). " +
                 $"{survivingRaiders} surviving raider(s) remain in the village until players defeat them or the world is reset.";
         }
 

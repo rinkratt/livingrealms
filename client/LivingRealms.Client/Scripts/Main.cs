@@ -11,7 +11,7 @@ namespace LivingRealms.Client;
 
 public partial class Main : Control
 {
-    private const string ClientVersion = "0.9.11";
+    private const string ClientVersion = BuildInfo.Version;
     private const string UpdateManifestUrl = "https://living-realms.com/downloads/windows-version.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -62,6 +62,7 @@ public partial class Main : Control
         _apiClient.DefaultRequestHeaders.UserAgent.ParseAdd($"LivingRealms/{ClientVersion}");
         _background = GetNode<ColorRect>("Background");
         _page = GetNode<Control>("Page");
+        GetNode<Label>("Page/Layout/Header/Phase").Text = BuildInfo.DisplayLabel;
         _authPanel = GetNode<PanelContainer>("Page/Layout/Content/AuthPanel");
         _realmPanel = GetNode<PanelContainer>("Page/Layout/Content/RealmPanel");
         _email = GetNode<LineEdit>("Page/Layout/Content/AuthPanel/Fields/Email");
@@ -1743,6 +1744,7 @@ public partial class Main : Control
                 state.Settlement.Leader.Trait,
                 state.Settlement.Leader.IsMajor,
                 state.Settlement.Leader.MemorySummary)),
+        state.Structures.Select(ToDestructibleStructure).ToArray(),
         new WorldEventReadinessData(
             new WorldTriggerReadinessData(
                 state.EventReadiness.DarkwoodRaid.Name,
@@ -1791,6 +1793,7 @@ public partial class Main : Control
             project.Stage,
             new Vector3(project.Position.X, project.Position.Y, project.Position.Z),
             project.CompletedAt)).ToArray(),
+        state.Structures.Select(ToDestructibleStructure).ToArray(),
         state.RecentContributions.Select(contribution => new ResourceContributionData(
             contribution.ContributorName,
             contribution.Kind,
@@ -1799,6 +1802,24 @@ public partial class Main : Control
             contribution.OccurredAt)).ToArray(),
         state.SettlementStores.Wood,
         state.SettlementStores.Stone);
+
+    private static DestructibleStructureData ToDestructibleStructure(
+        DestructibleStructureResponse structure) => new(
+        structure.Id,
+        structure.Key,
+        structure.Name,
+        structure.Owner,
+        structure.Kind,
+        structure.Health,
+        structure.MaximumHealth,
+        structure.Armor,
+        structure.IsBuilt,
+        structure.BlocksMovement,
+        structure.Status,
+        structure.ProjectLevel,
+        new Vector3(structure.Position.X, structure.Position.Y, structure.Position.Z),
+        structure.LastDamagedAt,
+        structure.DestroyedAt);
 
     private async void SaveWorldAndQuitAsync()
     {
@@ -2330,6 +2351,7 @@ public partial class Main : Control
     {
         public ResourceNodeResponse[] Nodes { get; init; } = [];
         public ConstructionProjectResponse[] Projects { get; init; } = [];
+        public DestructibleStructureResponse[] Structures { get; init; } = [];
         public ContributionResponse[] RecentContributions { get; init; } = [];
         public SettlementStoresResponse SettlementStores { get; init; } = new();
     }
@@ -2389,6 +2411,7 @@ public partial class Main : Control
         public bool CanAccelerate { get; init; }
         public WorldFactionResponse Faction { get; init; } = new();
         public WorldSettlementResponse Settlement { get; init; } = new();
+        public DestructibleStructureResponse[] Structures { get; init; } = [];
         public WorldEventReadinessResponse EventReadiness { get; init; } = new();
         public WorldEventQueueResponse Events { get; init; } = new();
         public WorldHistoryResponse[] RecentHistory { get; init; } = [];
@@ -2423,6 +2446,25 @@ public partial class Main : Control
         public string Name { get; init; } = string.Empty;
         public int Level { get; init; }
         public int Health { get; init; }
+    }
+
+    private sealed class DestructibleStructureResponse
+    {
+        public Guid Id { get; init; }
+        public string Key { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string Owner { get; init; } = string.Empty;
+        public string Kind { get; init; } = string.Empty;
+        public int Health { get; init; }
+        public int MaximumHealth { get; init; }
+        public int Armor { get; init; }
+        public bool IsBuilt { get; init; }
+        public bool BlocksMovement { get; init; }
+        public string Status { get; init; } = string.Empty;
+        public int ProjectLevel { get; init; }
+        public PositionResponse Position { get; init; } = new();
+        public DateTimeOffset? LastDamagedAt { get; init; }
+        public DateTimeOffset? DestroyedAt { get; init; }
     }
 
     private sealed class WorldLeaderResponse

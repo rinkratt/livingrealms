@@ -14,6 +14,7 @@ public sealed partial class WorldSimulationService(
     RaidSimulationService raidSimulation,
     WorldPopulationService population,
     FactionLeadershipService leadership,
+    WorldStructureService structures,
     IOptions<WorldSimulationOptions> options,
     ILogger<WorldSimulationService> logger)
 {
@@ -250,6 +251,7 @@ public sealed partial class WorldSimulationService(
             }
             database.ResourceContributions.RemoveRange(
                 await database.ResourceContributions.ToListAsync(cancellationToken));
+            await structures.ResetAsync(resetAt, cancellationToken);
 
             database.ScheduledEvents.RemoveRange(await database.ScheduledEvents
                 .Where(x => x.TargetId == faction.Id || x.EventType == ProgressionEventType)

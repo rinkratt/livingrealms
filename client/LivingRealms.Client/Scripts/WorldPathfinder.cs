@@ -12,6 +12,7 @@ public sealed class WorldPathfinder : IDisposable
     private readonly float _agentClearance;
     private readonly HashSet<Vector2I> _baseSolidCells = [];
     private HashSet<Vector2I> _dynamicSolidCells = [];
+    private HashSet<Vector2I> _passableCells = [];
 
     public WorldPathfinder(
         Vector2 minimum,
@@ -32,26 +33,36 @@ public sealed class WorldPathfinder : IDisposable
         _grid.Update();
 
         _baseSolidCells = RasterizeObstacles(obstacles);
-        foreach (var cell in _baseSolidCells)
-        {
-            _grid.SetPointSolid(cell);
-        }
+        RebuildSolidity();
     }
 
     public void SetDynamicObstacles(IEnumerable<WorldPathObstacle> obstacles)
     {
-        foreach (var cell in _dynamicSolidCells)
+        _dynamicSolidCells = RasterizeObstacles(obstacles);
+        RebuildSolidity();
+    }
+
+    public void SetPassableAreas(IEnumerable<WorldPathObstacle> areas)
+    {
+        _passableCells = RasterizeObstacles(areas);
+        RebuildSolidity();
+    }
+
+    private void RebuildSolidity()
+    {
+        for (var z = 0; z < _height; z++)
         {
-            if (!_baseSolidCells.Contains(cell))
+            for (var x = 0; x < _width; x++)
             {
-                _grid.SetPointSolid(cell, false);
+                _grid.SetPointSolid(new Vector2I(x, z), false);
             }
         }
-
-        _dynamicSolidCells = RasterizeObstacles(obstacles);
-        foreach (var cell in _dynamicSolidCells)
+        foreach (var cell in _baseSolidCells.Concat(_dynamicSolidCells))
         {
-            _grid.SetPointSolid(cell);
+            if (!_passableCells.Contains(cell))
+            {
+                _grid.SetPointSolid(cell);
+            }
         }
     }
 

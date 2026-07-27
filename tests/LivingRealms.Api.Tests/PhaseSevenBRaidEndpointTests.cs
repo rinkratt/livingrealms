@@ -522,13 +522,21 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             Assert.Equal(20, assault.Members.Count);
         }
 
-        using (var scope = _factory.Services.CreateScope())
+        for (var battleStep = 0; battleStep < 20; battleStep++)
         {
+            using var scope = _factory.Services.CreateScope();
             var simulation = scope.ServiceProvider.GetRequiredService<RaidSimulationService>();
-            await simulation.AdvanceActiveStonehavenAssaultAsync(
-                processedAt.AddMinutes(1),
-                rounds: 100,
+            var result = await simulation.AdvanceActiveStonehavenAssaultAsync(
+                processedAt.AddMinutes(battleStep + 1),
+                rounds: 24,
                 ignoreMinimumInterval: true);
+            if (result is null ||
+                result.Status is StonehavenAssaultStatus.StonehavenVictory or
+                    StonehavenAssaultStatus.DarkwoodVictory or
+                    StonehavenAssaultStatus.Cancelled)
+            {
+                break;
+            }
         }
 
         using var verificationScope = _factory.Services.CreateScope();

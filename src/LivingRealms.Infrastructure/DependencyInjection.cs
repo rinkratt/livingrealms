@@ -19,6 +19,7 @@ public static class DependencyInjection
         services.AddScoped<RaidSimulationService>();
         services.AddScoped<WorldPopulationService>();
         services.AddScoped<FactionLeadershipService>();
+        services.AddScoped<WorldStructureService>();
         return services;
     }
 }

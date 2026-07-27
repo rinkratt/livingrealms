@@ -60,6 +60,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public DbSet<Faction> Factions => Set<Faction>();
     public DbSet<FactionResource> FactionResources => Set<FactionResource>();
     public DbSet<FactionStructure> FactionStructures => Set<FactionStructure>();
+    public DbSet<WorldStructure> WorldStructures => Set<WorldStructure>();
     public DbSet<CreatureSpecies> CreatureSpecies => Set<CreatureSpecies>();
     public DbSet<Creature> Creatures => Set<Creature>();
     public DbSet<CreatureSkill> CreatureSkills => Set<CreatureSkill>();
@@ -82,6 +83,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
         ConfigureCreatures(modelBuilder);
         ConfigureEvents(modelBuilder);
         ConfigureDevelopment(modelBuilder);
+        ConfigureDestructibleStructures(modelBuilder);
 
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
@@ -1006,6 +1008,142 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
             Level = 1,
             Health = 100,
             CompletedAt = PhaseSixSeedTime,
+            CreatedAt = PhaseSixSeedTime,
+            UpdatedAt = PhaseSixSeedTime
+        };
+    }
+
+    private static void ConfigureDestructibleStructures(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WorldStructure>(entity =>
+        {
+            entity.HasIndex(x => x.Key).IsUnique();
+            entity.HasIndex(x => new { x.Owner, x.Kind, x.DisplayOrder });
+            entity.Property(x => x.Key).HasMaxLength(100);
+            entity.Property(x => x.Name).HasMaxLength(160);
+            entity.HasOne(x => x.ConstructionProject)
+                .WithMany()
+                .HasForeignKey(x => x.ConstructionProjectId)
+                .OnDelete(DeleteBehavior.SetNull);
+            entity.HasData(
+                CreateWorldStructure("83000000-0000-4000-8000-000000000001", "stonehaven-gate", "Stonehaven Main Gate",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Gate, 0, 3.5f, 1800, 12, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000002", "stonehaven-wall-northwest", "Stonehaven Northwest Wall",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Wall, -17, 3.5f, 1600, 14, 2,
+                    StonehavenWallProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000003", "stonehaven-wall-northeast", "Stonehaven Northeast Wall",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Wall, 17, 3.5f, 1600, 14, 3,
+                    StonehavenWallProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000004", "stonehaven-wall-west", "Stonehaven West Wall",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Wall, -29, -16, 1800, 14, 4,
+                    StonehavenWallProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000005", "stonehaven-wall-east", "Stonehaven East Wall",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Wall, 29, -16, 1800, 14, 5,
+                    StonehavenWallProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000006", "stonehaven-wall-south", "Stonehaven South Wall",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Wall, 0, -36, 2200, 14, 6,
+                    StonehavenWallProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000007", "stonehaven-blacksmith", "Stonehaven Blacksmith",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Building, -11, -13, 900, 8, 10),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000008", "stonehaven-inn", "Wayfarer Inn",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Building, 11, -14, 850, 7, 11),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000009", "stonehaven-herbalist", "Stonehaven Herbalist",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Building, -12, -26, 700, 6, 12),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000010", "stonehaven-storehouse", "Stonehaven Storehouse",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Stockpile, 12, -27, 1000, 9, 13),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000011", "stonehaven-lumber-yard", "Stonehaven Lumber Yard",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Building, -22, -19.5f, 950, 6, 14,
+                    StonehavenLumberYardProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000012", "stonehaven-quarry-works", "Stonehaven Quarry Works",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Building, 88, -91, 1000, 8, 15,
+                    StonehavenQuarryWorksProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000013", "irondeep-mine", "Irondeep Mine",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Mine, 108, -112, 1400, 12, 16),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000014", "mirrorwater-dock", "Mirrorwater Dock",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Dock, 82, -20, 600, 3, 17),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000015", "stonehaven-west-farmhouse", "West Farmhouse",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Building, -29, 128, 650, 5, 18),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000016", "stonehaven-east-farmhouse", "East Farmhouse",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Building, 29, 128, 650, 5, 19),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000017", "stonehaven-farm-1", "Northwest Cropland",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Farm, -28, 76, 450, 2, 20),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000018", "stonehaven-farm-2", "North Cropland",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Farm, -9, 76, 450, 2, 21),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000019", "stonehaven-farm-3", "Northeast Cropland",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Farm, 10, 76, 450, 2, 22),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000020", "stonehaven-farm-4", "East Cropland",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Farm, 29, 76, 450, 2, 23),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000021", "stonehaven-farm-5", "Southwest Cropland",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Farm, -28, 101, 450, 2, 24),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000022", "stonehaven-farm-6", "South Cropland",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Farm, -9, 101, 450, 2, 25),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000023", "stonehaven-farm-7", "Southeast Cropland",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Farm, 10, 101, 450, 2, 26),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000024", "stonehaven-farm-8", "Far East Cropland",
+                    ResourceOwner.Stonehaven, WorldStructureKind.Farm, 29, 101, 450, 2, 27),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000025", "darkwood-palisade-north", "Darkwood North Palisade",
+                    ResourceOwner.Darkwood, WorldStructureKind.Wall, -116, -121, 1100, 8, 40,
+                    DarkwoodPalisadeProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000026", "darkwood-palisade-east", "Darkwood East Palisade",
+                    ResourceOwner.Darkwood, WorldStructureKind.Wall, -99, -104, 1100, 8, 41,
+                    DarkwoodPalisadeProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000027", "darkwood-palisade-south", "Darkwood South Palisade",
+                    ResourceOwner.Darkwood, WorldStructureKind.Wall, -116, -87, 1100, 8, 42,
+                    DarkwoodPalisadeProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000028", "darkwood-palisade-west", "Darkwood West Palisade",
+                    ResourceOwner.Darkwood, WorldStructureKind.Wall, -133, -104, 1100, 8, 43,
+                    DarkwoodPalisadeProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000029", "darkwood-hide-tents", "Darkwood Hide Tents",
+                    ResourceOwner.Darkwood, WorldStructureKind.Building, -119, -107, 800, 4, 44),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000030", "darkwood-stockpile", "Darkwood Crude Stockpile",
+                    ResourceOwner.Darkwood, WorldStructureKind.Stockpile, -124, -102, 700, 5, 45),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000031", "darkwood-supply-hut", "Darkwood Supply Hut",
+                    ResourceOwner.Darkwood, WorldStructureKind.Building, -126, -98, 750, 5, 46,
+                    DarkwoodSupplyHutProjectId, 1),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000032", "darkwood-hunter-lodge", "Darkwood Hunter Lodge",
+                    ResourceOwner.Darkwood, WorldStructureKind.Building, -107, -108, 900, 6, 47,
+                    requiredDevelopmentStage: 2),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000033", "darkwood-watchtower", "Darkwood Watchtower",
+                    ResourceOwner.Darkwood, WorldStructureKind.Building, -126, -112, 1000, 8, 48,
+                    requiredDevelopmentStage: 3),
+                CreateWorldStructure("83000000-0000-4000-8000-000000000034", "darkwood-iron-workshop", "Darkwood Iron Workshop",
+                    ResourceOwner.Darkwood, WorldStructureKind.Building, -107, -98, 1150, 10, 49,
+                    requiredDevelopmentStage: 3));
+        });
+    }
+
+    private static WorldStructure CreateWorldStructure(
+        string id,
+        string key,
+        string name,
+        ResourceOwner owner,
+        WorldStructureKind kind,
+        float positionX,
+        float positionZ,
+        int maximumHealth,
+        int armor,
+        int displayOrder,
+        Guid? constructionProjectId = null,
+        int requiredProjectLevel = 0,
+        int requiredDevelopmentStage = 1)
+    {
+        return new WorldStructure
+        {
+            Id = Guid.Parse(id),
+            Key = key,
+            Name = name,
+            Owner = owner,
+            Kind = kind,
+            ConstructionProjectId = constructionProjectId,
+            RequiredProjectLevel = requiredProjectLevel,
+            RequiredDevelopmentStage = requiredDevelopmentStage,
+            Health = maximumHealth,
+            MaximumHealth = maximumHealth,
+            Armor = armor,
+            PositionX = positionX,
+            PositionY = 0.08f,
+            PositionZ = positionZ,
+            DisplayOrder = displayOrder,
             CreatedAt = PhaseSixSeedTime,
             UpdatedAt = PhaseSixSeedTime
         };

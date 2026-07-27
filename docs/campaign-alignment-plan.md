@@ -4,7 +4,7 @@ This plan supersedes older phase labels that no longer match the implemented
 playtest. It records the agreed simulation rules for the current alignment
 work.
 
-## Phase 1: stability and campaign controls
+## Phase 1: stability and campaign controls — complete in 0.9.11
 
 - Recover roaming dragons from stalled paths and landing loops.
 - Spread creatures around combat targets and prevent queued combat requests
@@ -14,7 +14,7 @@ work.
 - Show ready campaigns in green on the Journey page.
 - Keep the current Darkwood leader visibly identified even after succession.
 
-## Phase 2: destructible settlements
+## Phase 2: destructible settlements — complete in 0.9.12
 
 - Give persistent hit points and damage states to individual walls, gates,
   buildings, farms, the A3 mine, and Darkwood camp structures.

@@ -3,6 +3,7 @@ using LivingRealms.Api.Security;
 using LivingRealms.Api.Time;
 using LivingRealms.Domain.Entities;
 using LivingRealms.Infrastructure.Persistence;
+using LivingRealms.Infrastructure.Simulation;
 using Microsoft.EntityFrameworkCore;
 
 namespace LivingRealms.Api.Features;
@@ -587,7 +588,15 @@ public static class DevelopmentEndpoints
             .Where(x => x.Id == LivingRealmsDbContext.StonehavenVillageId)
             .Select(x => new SettlementStoresResponse(x.Wood, x.Stone))
             .SingleAsync(cancellationToken);
-        return new DevelopmentStateResponse(nodes, projects, contributions, settlementStores, CentralClock.Now);
+        var structures = await new WorldStructureService(database)
+            .GetStatesAsync(cancellationToken: cancellationToken);
+        return new DevelopmentStateResponse(
+            nodes,
+            projects,
+            structures,
+            contributions,
+            settlementStores,
+            CentralClock.Now);
     }
 
     private static float ProjectProgress(ConstructionProject project)
@@ -681,6 +690,7 @@ public static class DevelopmentEndpoints
     public sealed record DevelopmentStateResponse(
         IReadOnlyCollection<ResourceNodeResponse> Nodes,
         IReadOnlyCollection<ConstructionProjectResponse> Projects,
+        IReadOnlyCollection<WorldStructureState> Structures,
         IReadOnlyCollection<ContributionResponse> RecentContributions,
         SettlementStoresResponse SettlementStores,
         DateTimeOffset ServerTimeCentral);

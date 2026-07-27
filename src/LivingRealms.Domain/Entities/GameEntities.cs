@@ -245,6 +245,27 @@ public sealed class FactionStructure : Entity
     public DateTimeOffset? CompletedAt { get; set; }
 }
 
+public sealed class WorldStructure : Entity
+{
+    public required string Key { get; set; }
+    public required string Name { get; set; }
+    public ResourceOwner Owner { get; set; }
+    public WorldStructureKind Kind { get; set; }
+    public Guid? ConstructionProjectId { get; set; }
+    public ConstructionProject? ConstructionProject { get; set; }
+    public int RequiredProjectLevel { get; set; }
+    public int RequiredDevelopmentStage { get; set; } = 1;
+    public int Health { get; set; }
+    public int MaximumHealth { get; set; }
+    public int Armor { get; set; }
+    public float PositionX { get; set; }
+    public float PositionY { get; set; }
+    public float PositionZ { get; set; }
+    public int DisplayOrder { get; set; }
+    public DateTimeOffset? LastDamagedAt { get; set; }
+    public DateTimeOffset? DestroyedAt { get; set; }
+}
+
 public sealed class WorldResourceNode : Entity
 {
     public Guid RegionId { get; set; }
@@ -414,6 +435,7 @@ public enum ItemRarity { Common, Uncommon, Rare, Epic }
 public enum EquipmentSlot { Weapon, Armor }
 public enum ResourceKind { Food, Wood, Stone, Iron, Gold }
 public enum ResourceOwner { Stonehaven, Darkwood }
+public enum WorldStructureKind { Wall, Gate, Building, Farm, Mine, Dock, Stockpile }
 public enum CreatureStatus { Alive, Dead, Missing, Captured, Promoted, Retired }
 public enum ResidentStatus { Active, Injured, Missing, Dead }
 public enum SettlementRaidStatus { Scheduled, Active, DefendersWon, AttackersWon, Cancelled }
