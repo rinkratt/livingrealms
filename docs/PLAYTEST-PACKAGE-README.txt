@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.16
+LIVING REALMS WINDOWS PLAYTEST 0.9.17
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,19 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.17
+- Keeps a completely destroyed Stonehaven or Darkwood defeated for fifteen
+  real minutes, even while no player is connected.
+- Returns Stonehaven's eleven founders or Darkwood's seven founders after the
+  recovery delay instead of restoring the settlement at full population.
+- Rebuilds persistent stockpiles, farms, buildings, the mine, and the dock
+  before repairing gates and walls.
+- Consumes each settlement's real wood and stone stores while repairing.
+- Blocks new major campaigns while either settlement is defeated or
+  rebuilding.
+- Shows the recovery countdown, founder return, current repair target,
+  structure health, and rebuild progress on the Journey page.
 
 BUILD 0.9.16
 - Adds a separate Stonehaven Exchange and Darkwood Clan Hoard.

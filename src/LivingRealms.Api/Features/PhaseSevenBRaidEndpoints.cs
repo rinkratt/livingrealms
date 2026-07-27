@@ -162,17 +162,21 @@ public static class PhaseSevenBRaidEndpoints
                              (x.Status == ResidentStatus.Active || x.Status == ResidentStatus.Injured),
                 cancellationToken);
         var administratorOnline = await IsAdministratorOnlineAsync(database, cancellationToken);
+        var settlementsHealthy = await database.SettlementRecoveries.AsNoTracking()
+            .AllAsync(x => x.Status == SettlementRecoveryStatus.Healthy, cancellationToken);
         var noLingeringRaid = raid is null ||
                              (raid.Status is not SettlementRaidStatus.Active and
                                  not SettlementRaidStatus.Scheduled &&
                               !hasSurvivingRaiders);
         var darkwoodRaidReady =
             availableDarkwoodFighters >= WorldPopulationService.AutomaticDarkwoodRaidersRequired &&
+            settlementsHealthy &&
             !counterattackActive &&
             noLingeringRaid;
         var counterattackReady =
             faction.DevelopmentStage >= 3 &&
             livingStonehavenResidents >= WorldPopulationService.StonehavenAssaultSoldiersRequired &&
+            settlementsHealthy &&
             !counterattackActive &&
             !raidActive &&
             !hasSurvivingRaiders;
@@ -181,6 +185,7 @@ public static class PhaseSevenBRaidEndpoints
         var canStartPlaytest = isAdministrator &&
                                administratorOnline &&
                                environment.IsEnvironment("Testing") &&
+                               settlementsHealthy &&
                                !counterattackActive &&
                                (raid is null ||
                                 raid.Status is not SettlementRaidStatus.Active and

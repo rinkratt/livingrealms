@@ -123,7 +123,7 @@ Do not use that Compose authentication configuration on a public or production h
 
 ## Entity Framework migrations
 
-The Phase 1, Phase 2, Phase 4, Phase 5, Phase 6, Phase 7A, and Phase 7B migrations are generated under `src/LivingRealms.Infrastructure/Persistence/Migrations`. Phase 7B adds persistent settlement raids and raid-attacker participation, including player contribution, casualties, injuries, structural damage, and outcomes.
+The Phase 1, Phase 2, Phase 4, Phase 5, Phase 6, Phase 7A, Phase 7B, and campaign-alignment migrations are generated under `src/LivingRealms.Infrastructure/Persistence/Migrations`. Campaign-alignment Phase 7 adds persistent settlement defeat timers, founder returns, and material-driven reconstruction state.
 
 ```powershell
 dotnet tool run dotnet-ef database update `

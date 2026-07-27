@@ -10,6 +10,7 @@ public sealed partial class RaidSimulationService(
     WorldPopulationService population,
     FactionLeadershipService leadership,
     WorldStructureService structures,
+    SettlementRecoveryService recovery,
     ILogger<RaidSimulationService> logger)
 {
     private static readonly TimeSpan OnlineRaidRoundInterval = TimeSpan.FromSeconds(10);
@@ -68,6 +69,13 @@ public sealed partial class RaidSimulationService(
         if (existing is not null)
         {
             return existing;
+        }
+
+        if (await database.SettlementRecoveries.AsNoTracking()
+                .AnyAsync(x => x.Status != SettlementRecoveryStatus.Healthy, cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "No campaign can begin while Stonehaven or Darkwood is defeated or rebuilding.");
         }
 
         await population.EnsureDarkwoodClanMembersAsync(cancellationToken: cancellationToken);
@@ -426,6 +434,13 @@ public sealed partial class RaidSimulationService(
         if (existing is not null)
         {
             return existing;
+        }
+
+        if (await database.SettlementRecoveries.AsNoTracking()
+                .AnyAsync(x => x.Status != SettlementRecoveryStatus.Healthy, cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "No campaign can begin while Stonehaven or Darkwood is defeated or rebuilding.");
         }
 
         if (await database.SettlementRaids.AsNoTracking()
@@ -895,9 +910,14 @@ public sealed partial class RaidSimulationService(
                                 (currentLeader is null
                                     ? "Darkwood was left without a leader."
                                     : $"{currentLeader.Name} escaped wounded.");
+            await recovery.MarkDefeatedAsync(
+                ResourceOwner.Darkwood,
+                resolvedAt,
+                cancellationToken);
+            assault.CampLevelAfter = 0;
             assault.OutcomeSummary =
-                $"Stonehaven's {assault.InitialSoldierCount} fighters cleared Darkwood's defenders and destroyed the fortified camp. " +
-                $"Darkwood fell from level {assault.CampLevelBefore} to level {assault.CampLevelAfter}; " +
+                $"Stonehaven's {assault.InitialSoldierCount} fighters cleared Darkwood's defenders and completely destroyed the fortified camp. " +
+                $"Darkwood is defeated for fifteen real minutes before its {WorldPopulationService.StartingDarkwoodPopulation} founders return and rebuild functional structures before the palisade. " +
                 $"{assault.SoldiersRemaining} Stonehaven fighters returned. {leaderOutcome}";
         }
         else
@@ -1021,6 +1041,15 @@ public sealed partial class RaidSimulationService(
 
         raid.Settlement.Population = Math.Max(0, raid.Settlement.Population - raid.ResidentCasualties);
         raid.Settlement.IsDestroyed = raid.Settlement.StructuralIntegrity <= 0;
+        if (!defendersWon)
+        {
+            await recovery.MarkDefeatedAsync(
+                ResourceOwner.Stonehaven,
+                resolvedAt,
+                cancellationToken);
+            raid.OutcomeSummary +=
+                $" Stonehaven is defeated for fifteen real minutes before its {WorldPopulationService.StartingStonehavenPopulation} founders return to rebuild functional structures before gates and walls.";
+        }
         raid.Settlement.UpdatedAt = resolvedAt;
         raid.AttackingFaction.UpdatedAt = resolvedAt;
         raid.UpdatedAt = resolvedAt;

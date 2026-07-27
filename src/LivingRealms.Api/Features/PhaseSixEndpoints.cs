@@ -25,6 +25,7 @@ public static class PhaseSixEndpoints
         HttpContext context,
         LivingRealmsDbContext database,
         WorldPopulationService population,
+        SettlementRecoveryService recovery,
         IHostEnvironment environment,
         IOptions<WorldSimulationOptions> options,
         CancellationToken cancellationToken)
@@ -32,6 +33,7 @@ public static class PhaseSixEndpoints
         return Results.Ok(await BuildWorldStateAsync(
             database,
             population,
+            recovery,
             CanControlWorld(context.User, environment),
             options.Value,
             cancellationToken));
@@ -64,6 +66,7 @@ public static class PhaseSixEndpoints
         LivingRealmsDbContext database,
         WorldSimulationService simulation,
         WorldPopulationService population,
+        SettlementRecoveryService recovery,
         IHostEnvironment environment,
         IOptions<WorldSimulationOptions> options,
         ILoggerFactory loggerFactory)
@@ -100,7 +103,13 @@ public static class PhaseSixEndpoints
                 centralTime);
         }
 
-        var state = await BuildWorldStateAsync(database, population, true, options.Value, context.RequestAborted);
+        var state = await BuildWorldStateAsync(
+            database,
+            population,
+            recovery,
+            true,
+            options.Value,
+            context.RequestAborted);
         return Results.Ok(new AdvanceWorldResponse(result, state));
     }
 
@@ -109,6 +118,7 @@ public static class PhaseSixEndpoints
         LivingRealmsDbContext database,
         WorldSimulationService simulation,
         WorldPopulationService population,
+        SettlementRecoveryService recovery,
         IHostEnvironment environment,
         IOptions<WorldSimulationOptions> options,
         ILoggerFactory loggerFactory)
@@ -133,16 +143,24 @@ public static class PhaseSixEndpoints
                 CentralClock.Now);
         }
 
-        return Results.Ok(await BuildWorldStateAsync(database, population, true, options.Value, context.RequestAborted));
+        return Results.Ok(await BuildWorldStateAsync(
+            database,
+            population,
+            recovery,
+            true,
+            options.Value,
+            context.RequestAborted));
     }
 
     private static async Task<WorldStateResponse> BuildWorldStateAsync(
         LivingRealmsDbContext database,
         WorldPopulationService population,
+        SettlementRecoveryService recovery,
         bool canAccelerate,
         WorldSimulationOptions options,
         CancellationToken cancellationToken)
     {
+        var recoveryStates = await recovery.GetStatesAsync(DateTimeOffset.UtcNow, cancellationToken);
         await population.EnsureDarkwoodClanMembersAsync(cancellationToken: cancellationToken);
         await population.EnsureStonehavenResidentsAsync(cancellationToken: cancellationToken);
         await population.EnsureHuntableWildlifeAsync(cancellationToken: cancellationToken);
@@ -220,13 +238,28 @@ public static class PhaseSixEndpoints
                            x.Account.IsAdministrator,
                 cancellationToken);
         var anyBattleActive = darkwoodRaidActive || counterattackActive;
+        var stonehavenHealthy = recoveryStates.Single(x =>
+            x.Owner == ResourceOwner.Stonehaven.ToString()).Status ==
+            SettlementRecoveryStatus.Healthy.ToString();
+        var darkwoodHealthy = recoveryStates.Single(x =>
+            x.Owner == ResourceOwner.Darkwood.ToString()).Status ==
+            SettlementRecoveryStatus.Healthy.ToString();
         var darkwoodRaidReady =
             raidReadyDarkwoodFighters >= WorldPopulationService.AutomaticDarkwoodRaidersRequired &&
+            stonehavenHealthy &&
+            darkwoodHealthy &&
             !anyBattleActive;
         var counterattackReady =
             faction.DevelopmentStage >= 3 &&
             livingStonehavenResidents >= WorldPopulationService.StonehavenAssaultSoldiersRequired &&
+            stonehavenHealthy &&
+            darkwoodHealthy &&
             !anyBattleActive;
+        var recoveryBlockReason = !stonehavenHealthy
+            ? "Stonehaven is defeated or rebuilding; no campaign may begin until its recovery is complete."
+            : !darkwoodHealthy
+                ? "Darkwood is defeated or rebuilding; no campaign may begin until its recovery is complete."
+                : null;
         var eventCounts = await database.ScheduledEvents.AsNoTracking()
             .GroupBy(x => x.Status)
             .Select(group => new { Status = group.Key, Count = group.Count() })
@@ -405,6 +438,11 @@ public static class PhaseSixEndpoints
                     faction.WeaponTier,
                     faction.ArmorTier,
                     recentBankTransactions)),
+            new SettlementRecoveriesResponse(
+                ToRecoveryResponse(recoveryStates.Single(x =>
+                    x.Owner == ResourceOwner.Stonehaven.ToString())),
+                ToRecoveryResponse(recoveryStates.Single(x =>
+                    x.Owner == ResourceOwner.Darkwood.ToString()))),
             destructibleStructures,
             new WorldEventReadinessResponse(
                 new TriggerReadinessResponse(
@@ -420,7 +458,8 @@ public static class PhaseSixEndpoints
                             ? administratorOnline
                                 ? "READY: an online administrator may authorize Darkwood's march."
                                 : "READY: waiting for an administrator to log into the game."
-                            : $"Darkwood needs {WorldPopulationService.AutomaticDarkwoodRaidersRequired} living fighters, not counting its current leader. {raidReadyDarkwoodFighters} are ready now."),
+                            : recoveryBlockReason ??
+                              $"Darkwood needs {WorldPopulationService.AutomaticDarkwoodRaidersRequired} living fighters, not counting its current leader. {raidReadyDarkwoodFighters} are ready now."),
                 new TriggerReadinessResponse(
                     "Stonehaven counterattack on Darkwood",
                     livingStonehavenResidents,
@@ -434,7 +473,8 @@ public static class PhaseSixEndpoints
                             ? administratorOnline
                                 ? "READY: an online administrator may authorize Stonehaven's counterattack."
                                 : "READY: waiting for an administrator to log into the game."
-                            : $"Stonehaven needs {WorldPopulationService.StonehavenAssaultSoldiersRequired} living residents and a completed level 3 Darkwood camp. Stonehaven has {livingStonehavenResidents}; Darkwood is level {faction.DevelopmentStage}/3.")),
+                            : recoveryBlockReason ??
+                              $"Stonehaven needs {WorldPopulationService.StonehavenAssaultSoldiersRequired} living residents and a completed level 3 Darkwood camp. Stonehaven has {livingStonehavenResidents}; Darkwood is level {faction.DevelopmentStage}/3.")),
             new EventQueueResponse(
                 pending,
                 eventCounts.GetValueOrDefault(ScheduledEventStatus.Completed),
@@ -539,6 +579,27 @@ public static class PhaseSixEndpoints
             transactions);
     }
 
+    private static SettlementRecoveryResponse ToRecoveryResponse(SettlementRecoveryState recovery) =>
+        new(
+            recovery.Owner,
+            recovery.Name,
+            recovery.Status,
+            recovery.FoundingPopulation,
+            recovery.DefeatedAt is null ? null : CentralClock.Convert(recovery.DefeatedAt.Value),
+            recovery.RecoveryEligibleAt is null ? null : CentralClock.Convert(recovery.RecoveryEligibleAt.Value),
+            recovery.RecoverySecondsRemaining,
+            recovery.RebuildingStartedAt is null ? null : CentralClock.Convert(recovery.RebuildingStartedAt.Value),
+            recovery.LastProgressedAt is null ? null : CentralClock.Convert(recovery.LastProgressedAt.Value),
+            recovery.RecoveredAt is null ? null : CentralClock.Convert(recovery.RecoveredAt.Value),
+            recovery.CurrentStructureKey,
+            recovery.RebuildCycles,
+            recovery.FunctionalStructuresRestored,
+            recovery.FunctionalStructuresTotal,
+            recovery.DefensesRestored,
+            recovery.DefensesTotal,
+            recovery.StructureHealth,
+            recovery.StructureMaximumHealth);
+
     private static string FormatAssaultPhase(StonehavenAssaultStatus status) => status switch
     {
         StonehavenAssaultStatus.Assembling => "Guard Captain Mira is assembling the counterattack at Stonehaven's gate.",
@@ -566,6 +627,7 @@ public static class PhaseSixEndpoints
         SurvivalResponse Survival,
         IronEconomyResponse IronEconomy,
         FactionBanksResponse Banks,
+        SettlementRecoveriesResponse Recovery,
         IReadOnlyCollection<WorldStructureState> Structures,
         WorldEventReadinessResponse EventReadiness,
         EventQueueResponse Events,
@@ -675,6 +737,28 @@ public static class PhaseSixEndpoints
     public sealed record FactionBanksResponse(
         FactionBankResponse Stonehaven,
         FactionBankResponse Darkwood);
+    public sealed record SettlementRecoveriesResponse(
+        SettlementRecoveryResponse Stonehaven,
+        SettlementRecoveryResponse Darkwood);
+    public sealed record SettlementRecoveryResponse(
+        string Owner,
+        string Name,
+        string Status,
+        int FoundingPopulation,
+        DateTimeOffset? DefeatedAtCentral,
+        DateTimeOffset? RecoveryEligibleAtCentral,
+        int RecoverySecondsRemaining,
+        DateTimeOffset? RebuildingStartedAtCentral,
+        DateTimeOffset? LastProgressedAtCentral,
+        DateTimeOffset? RecoveredAtCentral,
+        string? CurrentStructureKey,
+        int RebuildCycles,
+        int FunctionalStructuresRestored,
+        int FunctionalStructuresTotal,
+        int DefensesRestored,
+        int DefensesTotal,
+        int StructureHealth,
+        int StructureMaximumHealth);
     public sealed record FactionBankResponse(
         string Owner,
         string Name,

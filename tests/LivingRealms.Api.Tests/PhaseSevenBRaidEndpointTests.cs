@@ -330,7 +330,12 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         var settlement = await database.Settlements.SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
         Assert.Equal(0, settlement.StructuralIntegrity);
         Assert.True(settlement.IsDestroyed);
-        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation - raid.ResidentCasualties, settlement.Population);
+        Assert.Equal(0, settlement.Population);
+        var recovery = await database.SettlementRecoveries
+            .SingleAsync(x => x.Owner == ResourceOwner.Stonehaven);
+        Assert.Equal(SettlementRecoveryStatus.Defeated, recovery.Status);
+        Assert.Equal(raid.ResolvedAt, recovery.DefeatedAt);
+        Assert.Equal(raid.ResolvedAt?.AddMinutes(15), recovery.RecoveryEligibleAt);
         var residents = await database.SettlementResidents.ToListAsync();
         Assert.All(
             residents.Where(x => x.CanFight && x.Name != "Mara Venn"),
@@ -375,7 +380,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             x => x.EventType == "stonehaven_raid_aftermath_cleared");
         var cleared = await client.GetFromJsonAsync<RaidStateResponse>("/api/v1/world/raid", JsonOptions);
         Assert.NotNull(cleared);
-        Assert.True(cleared.CanStartPlaytest);
+        Assert.False(cleared.CanStartPlaytest);
     }
 
     [Fact]

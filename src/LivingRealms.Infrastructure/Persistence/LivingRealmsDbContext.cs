@@ -29,6 +29,8 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public static readonly Guid IrondeepMineStructureId = Guid.Parse("83000000-0000-4000-8000-000000000013");
     public static readonly Guid StonehavenBankId = Guid.Parse("85000000-0000-4000-8000-000000000001");
     public static readonly Guid DarkwoodBankId = Guid.Parse("85000000-0000-4000-8000-000000000002");
+    public static readonly Guid StonehavenRecoveryId = Guid.Parse("86000000-0000-4000-8000-000000000001");
+    public static readonly Guid DarkwoodRecoveryId = Guid.Parse("86000000-0000-4000-8000-000000000002");
     public static readonly Guid AvelineResidentId = Guid.Parse("73000000-0000-4000-8000-000000000001");
     public static readonly Guid CedricResidentId = Guid.Parse("73000000-0000-4000-8000-000000000002");
     public static readonly Guid YsabelResidentId = Guid.Parse("73000000-0000-4000-8000-000000000003");
@@ -73,6 +75,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public DbSet<FactionBank> FactionBanks => Set<FactionBank>();
     public DbSet<FactionBankInventory> FactionBankInventory => Set<FactionBankInventory>();
     public DbSet<FactionBankTransaction> FactionBankTransactions => Set<FactionBankTransaction>();
+    public DbSet<SettlementRecovery> SettlementRecoveries => Set<SettlementRecovery>();
     public DbSet<WorldStructure> WorldStructures => Set<WorldStructure>();
     public DbSet<CreatureSpecies> CreatureSpecies => Set<CreatureSpecies>();
     public DbSet<Creature> Creatures => Set<Creature>();
@@ -95,6 +98,7 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
         ConfigureFactions(modelBuilder);
         ConfigureIronEconomy(modelBuilder);
         ConfigureFactionBanks(modelBuilder);
+        ConfigureSettlementRecoveries(modelBuilder);
         ConfigureCreatures(modelBuilder);
         ConfigureEvents(modelBuilder);
         ConfigureDevelopment(modelBuilder);
@@ -653,6 +657,34 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
             CreatedAt = PhaseSixSeedTime,
             UpdatedAt = PhaseSixSeedTime
         };
+
+    private static void ConfigureSettlementRecoveries(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<SettlementRecovery>(entity =>
+        {
+            entity.HasIndex(x => x.Owner).IsUnique();
+            entity.Property(x => x.CurrentStructureKey).HasMaxLength(100);
+            entity.HasData(
+                new SettlementRecovery
+                {
+                    Id = StonehavenRecoveryId,
+                    Owner = ResourceOwner.Stonehaven,
+                    Status = SettlementRecoveryStatus.Healthy,
+                    FoundingPopulation = WorldPopulationService.StartingStonehavenPopulation,
+                    CreatedAt = PhaseSixSeedTime,
+                    UpdatedAt = PhaseSixSeedTime
+                },
+                new SettlementRecovery
+                {
+                    Id = DarkwoodRecoveryId,
+                    Owner = ResourceOwner.Darkwood,
+                    Status = SettlementRecoveryStatus.Healthy,
+                    FoundingPopulation = WorldPopulationService.StartingDarkwoodPopulation,
+                    CreatedAt = PhaseSixSeedTime,
+                    UpdatedAt = PhaseSixSeedTime
+                });
+        });
+    }
 
     private static void ConfigureCreatures(ModelBuilder modelBuilder)
     {

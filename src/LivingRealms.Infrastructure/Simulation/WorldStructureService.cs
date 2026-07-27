@@ -168,7 +168,7 @@ public sealed class WorldStructureService(LivingRealmsDbContext database)
             structure.DestroyedAt);
     }
 
-    private static bool IsBuilt(WorldStructure structure, int developmentStage) =>
+    public static bool IsBuilt(WorldStructure structure, int developmentStage) =>
         developmentStage >= structure.RequiredDevelopmentStage &&
         (structure.ConstructionProjectId is null ||
          structure.ConstructionProject is not null &&

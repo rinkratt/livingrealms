@@ -55,7 +55,7 @@ work.
 - The Journey page exposes both inventories, gold balances, prices,
   shortages, and recent transactions.
 
-## Phase 7: destruction and recovery
+## Phase 7: destruction and recovery — complete in 0.9.17
 
 - A completely destroyed settlement remains defeated for fifteen real
   minutes.

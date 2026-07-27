@@ -1776,6 +1776,9 @@ public partial class Main : Control
         new WorldFactionBanksData(
             ToFactionBank(state.Banks.Stonehaven),
             ToFactionBank(state.Banks.Darkwood)),
+        new WorldSettlementRecoveriesData(
+            ToSettlementRecovery(state.Recovery.Stonehaven),
+            ToSettlementRecovery(state.Recovery.Darkwood)),
         state.Structures.Select(ToDestructibleStructure).ToArray(),
         new WorldEventReadinessData(
             new WorldTriggerReadinessData(
@@ -1841,6 +1844,28 @@ public partial class Main : Control
                 x.FactionGoldAfter,
                 x.Description,
                 x.OccurredAtCentral)).ToArray());
+
+    private static WorldSettlementRecoveryData ToSettlementRecovery(
+        WorldSettlementRecoveryResponse recovery) =>
+        new(
+            recovery.Owner,
+            recovery.Name,
+            recovery.Status,
+            recovery.FoundingPopulation,
+            recovery.DefeatedAtCentral,
+            recovery.RecoveryEligibleAtCentral,
+            recovery.RecoverySecondsRemaining,
+            recovery.RebuildingStartedAtCentral,
+            recovery.LastProgressedAtCentral,
+            recovery.RecoveredAtCentral,
+            recovery.CurrentStructureKey,
+            recovery.RebuildCycles,
+            recovery.FunctionalStructuresRestored,
+            recovery.FunctionalStructuresTotal,
+            recovery.DefensesRestored,
+            recovery.DefensesTotal,
+            recovery.StructureHealth,
+            recovery.StructureMaximumHealth);
 
     private static WorldFoodEconomyData ToFoodEconomy(WorldFoodEconomyResponse economy) => new(
         economy.Population,
@@ -2511,6 +2536,7 @@ public partial class Main : Control
         public WorldSurvivalResponse Survival { get; init; } = new();
         public WorldIronEconomyResponse IronEconomy { get; init; } = new();
         public WorldFactionBanksResponse Banks { get; init; } = new();
+        public WorldSettlementRecoveriesResponse Recovery { get; init; } = new();
         public DestructibleStructureResponse[] Structures { get; init; } = [];
         public WorldEventReadinessResponse EventReadiness { get; init; } = new();
         public WorldEventQueueResponse Events { get; init; } = new();
@@ -2668,6 +2694,34 @@ public partial class Main : Control
     {
         public WorldFactionBankResponse Stonehaven { get; init; } = new();
         public WorldFactionBankResponse Darkwood { get; init; } = new();
+    }
+
+    private sealed class WorldSettlementRecoveriesResponse
+    {
+        public WorldSettlementRecoveryResponse Stonehaven { get; init; } = new();
+        public WorldSettlementRecoveryResponse Darkwood { get; init; } = new();
+    }
+
+    private sealed class WorldSettlementRecoveryResponse
+    {
+        public string Owner { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public string Status { get; init; } = string.Empty;
+        public int FoundingPopulation { get; init; }
+        public DateTimeOffset? DefeatedAtCentral { get; init; }
+        public DateTimeOffset? RecoveryEligibleAtCentral { get; init; }
+        public int RecoverySecondsRemaining { get; init; }
+        public DateTimeOffset? RebuildingStartedAtCentral { get; init; }
+        public DateTimeOffset? LastProgressedAtCentral { get; init; }
+        public DateTimeOffset? RecoveredAtCentral { get; init; }
+        public string? CurrentStructureKey { get; init; }
+        public int RebuildCycles { get; init; }
+        public int FunctionalStructuresRestored { get; init; }
+        public int FunctionalStructuresTotal { get; init; }
+        public int DefensesRestored { get; init; }
+        public int DefensesTotal { get; init; }
+        public int StructureHealth { get; init; }
+        public int StructureMaximumHealth { get; init; }
     }
 
     private sealed class WorldFactionBankResponse

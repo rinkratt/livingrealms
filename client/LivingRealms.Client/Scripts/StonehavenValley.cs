@@ -1557,6 +1557,12 @@ public partial class StonehavenValley : Node3D
         var darkwoodFood = FormatFoodEconomy("DARKWOOD", state.Survival.Darkwood);
         var ironEconomy = FormatIronEconomy(state.IronEconomy);
         var factionBanks = FormatFactionBanks(state.Banks);
+        var recovery = FormatSettlementRecovery(state.Recovery);
+        var recoveryAlert = RecoveryAlert(state.Recovery);
+        if (!string.IsNullOrWhiteSpace(recoveryAlert))
+        {
+            _worldHudLabel.Text += $"  â€¢  {recoveryAlert}";
+        }
         var adminJobs = state.CanAccelerate
             ? $"\n\nADMIN SIMULATION JOBS\n{state.Events.Pending} pending   •   {state.Events.Completed} completed   •   {state.Events.Failed} failed"
             : string.Empty;
@@ -1577,6 +1583,7 @@ public partial class StonehavenValley : Node3D
             $"Huntable wildlife: {state.Survival.Wildlife.Available}/{state.Survival.Wildlife.Total} active   •   {state.Survival.Wildlife.Respawning} respawning\n\n" +
             $"IRONDEEP & EQUIPMENT\n{ironEconomy}\n\n" +
             $"FACTION BANKS\n{factionBanks}\n\n" +
+            $"DESTRUCTION & RECOVERY\n{recovery}\n\n" +
             $"Destructible settlement assets:\n{structureSummary}\n" +
             $"Growth: at most one new resident per world day, only when housing and the required food, timber, and stone are available.\n\n" +
             "CAMPAIGN READINESS\nBattles become ready from living-world conditions, but only an online administrator can authorize their start." +
@@ -1644,6 +1651,37 @@ public partial class StonehavenValley : Node3D
 
     private static string FormatFactionBanks(WorldFactionBanksData banks) =>
         $"{FormatFactionBank(banks.Stonehaven)}\n{FormatFactionBank(banks.Darkwood)}";
+
+    private static string FormatSettlementRecovery(WorldSettlementRecoveriesData recovery) =>
+        $"{FormatSettlementRecovery(recovery.Stonehaven)}\n{FormatSettlementRecovery(recovery.Darkwood)}";
+
+    private static string FormatSettlementRecovery(WorldSettlementRecoveryData recovery)
+    {
+        var status = recovery.Status.ToUpperInvariant();
+        var timer = recovery.Status.Equals("Defeated", StringComparison.OrdinalIgnoreCase)
+            ? $"   â€¢   founders return in {TimeSpan.FromSeconds(recovery.RecoverySecondsRemaining):mm\\:ss}"
+            : string.Empty;
+        var target = recovery.Status.Equals("Rebuilding", StringComparison.OrdinalIgnoreCase)
+            ? $"   â€¢   current work: {SplitPascalCase((recovery.CurrentStructureKey ?? "waiting-for-materials").Replace("-", " "))}"
+            : string.Empty;
+        return
+            $"{recovery.Name}: {status}{timer}{target}\n" +
+            $"  Founders {recovery.FoundingPopulation}   â€¢   functional structures {recovery.FunctionalStructuresRestored}/{recovery.FunctionalStructuresTotal}   â€¢   gates/walls {recovery.DefensesRestored}/{recovery.DefensesTotal}\n" +
+            $"  Structure health {recovery.StructureHealth}/{recovery.StructureMaximumHealth}   â€¢   rebuild cycles {recovery.RebuildCycles}";
+    }
+
+    private static string RecoveryAlert(WorldSettlementRecoveriesData recovery)
+    {
+        var active = new[] { recovery.Stonehaven, recovery.Darkwood }
+            .FirstOrDefault(x => !x.Status.Equals("Healthy", StringComparison.OrdinalIgnoreCase));
+        if (active is null)
+        {
+            return string.Empty;
+        }
+        return active.Status.Equals("Defeated", StringComparison.OrdinalIgnoreCase)
+            ? $"{active.Name.ToUpperInvariant()} DEFEATED â€” {TimeSpan.FromSeconds(active.RecoverySecondsRemaining):mm\\:ss}"
+            : $"{active.Name.ToUpperInvariant()} REBUILDING";
+    }
 
     private static string FormatFactionBank(WorldFactionBankData bank)
     {
@@ -2436,6 +2474,15 @@ public partial class StonehavenValley : Node3D
                     new WorldBankInventoryData("Iron", 0, 6, 9, 5, 10, 5, null, null)
                 ],
                 [])),
+        new WorldSettlementRecoveriesData(
+            new WorldSettlementRecoveryData(
+                "Stonehaven", "Stonehaven", "Healthy", 11,
+                null, null, 0, null, null, null, null, 0,
+                18, 18, 1, 1, 15000, 15000),
+            new WorldSettlementRecoveryData(
+                "Darkwood", "Darkwood", "Healthy", 7,
+                null, null, 0, null, null, null, null, 0,
+                2, 2, 0, 0, 1500, 1500)),
         [
             new DestructibleStructureData(
                 Guid.Parse("83000000-0000-4000-8000-000000000001"),
@@ -5470,6 +5517,7 @@ public sealed record WorldStateData(
     WorldSurvivalData Survival,
     WorldIronEconomyData IronEconomy,
     WorldFactionBanksData Banks,
+    WorldSettlementRecoveriesData Recovery,
     IReadOnlyCollection<DestructibleStructureData> Structures,
     WorldEventReadinessData EventReadiness,
     WorldEventQueueData Events,
@@ -5584,6 +5632,28 @@ public sealed record WorldMineGuardData(
 public sealed record WorldFactionBanksData(
     WorldFactionBankData Stonehaven,
     WorldFactionBankData Darkwood);
+public sealed record WorldSettlementRecoveriesData(
+    WorldSettlementRecoveryData Stonehaven,
+    WorldSettlementRecoveryData Darkwood);
+public sealed record WorldSettlementRecoveryData(
+    string Owner,
+    string Name,
+    string Status,
+    int FoundingPopulation,
+    DateTimeOffset? DefeatedAtCentral,
+    DateTimeOffset? RecoveryEligibleAtCentral,
+    int RecoverySecondsRemaining,
+    DateTimeOffset? RebuildingStartedAtCentral,
+    DateTimeOffset? LastProgressedAtCentral,
+    DateTimeOffset? RecoveredAtCentral,
+    string? CurrentStructureKey,
+    int RebuildCycles,
+    int FunctionalStructuresRestored,
+    int FunctionalStructuresTotal,
+    int DefensesRestored,
+    int DefensesTotal,
+    int StructureHealth,
+    int StructureMaximumHealth);
 public sealed record WorldFactionBankData(
     string Owner,
     string Name,

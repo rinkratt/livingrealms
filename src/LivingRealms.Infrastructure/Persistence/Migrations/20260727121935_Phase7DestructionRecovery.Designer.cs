@@ -3,6 +3,7 @@ using System;
 using LivingRealms.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace LivingRealms.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(LivingRealmsDbContext))]
-    partial class LivingRealmsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260727121935_Phase7DestructionRecovery")]
+    partial class Phase7DestructionRecovery
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

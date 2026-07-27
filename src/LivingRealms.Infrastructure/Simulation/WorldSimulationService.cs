@@ -15,6 +15,7 @@ public sealed partial class WorldSimulationService(
     WorldPopulationService population,
     FactionLeadershipService leadership,
     WorldStructureService structures,
+    SettlementRecoveryService recovery,
     IOptions<WorldSimulationOptions> options,
     ILogger<WorldSimulationService> logger)
 {
@@ -26,6 +27,7 @@ public sealed partial class WorldSimulationService(
         CancellationToken cancellationToken = default)
     {
         var recovered = await RecoverInterruptedEventsAsync(processedAt, cancellationToken);
+        await recovery.AdvanceAsync(processedAt, cancellationToken: cancellationToken);
         var faction = await database.Factions.AsNoTracking()
             .SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodClanId, cancellationToken);
         var elapsedMinutes = Math.Max(0, (processedAt - faction.LastProcessedAt).TotalMinutes);
@@ -238,6 +240,7 @@ public sealed partial class WorldSimulationService(
                 ResetIronOperation(operation, resetAt);
             }
             await ResetFactionBanksAsync(resetAt, cancellationToken);
+            await recovery.ResetAsync(resetAt, cancellationToken);
 
             if (assaults.Count > 0)
             {
@@ -281,7 +284,10 @@ public sealed partial class WorldSimulationService(
             database.WorldHistory.RemoveRange(await database.WorldHistory
                 .Where(x => x.FactionId == faction.Id ||
                             x.EventType == "construction_completed" ||
-                            x.EventType == "construction_upgraded")
+                            x.EventType == "construction_upgraded" ||
+                            x.EventType == "settlement_defeated" ||
+                            x.EventType == "settlement_rebuilding_started" ||
+                            x.EventType == "settlement_recovered")
                 .ToListAsync(cancellationToken));
             AddHistory(
                 "playtest_reset",
@@ -514,6 +520,23 @@ public sealed partial class WorldSimulationService(
 
     private async Task ApplyProgressionAsync(ProgressionPayload payload, CancellationToken cancellationToken)
     {
+        var recoveryStates = await recovery.AdvanceAsync(
+            payload.ProcessedAt,
+            payload.WorldHours,
+            cancellationToken);
+        if (recoveryStates.Single(x => x.Owner == ResourceOwner.Darkwood.ToString()).Status ==
+            SettlementRecoveryStatus.Defeated.ToString())
+        {
+            var defeatedFaction = await database.Factions
+                .SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodClanId, cancellationToken);
+            defeatedFaction.SimulatedHours += payload.WorldHours;
+            defeatedFaction.LastProcessedAt = payload.ProcessedAt;
+            defeatedFaction.NextDecisionAt = payload.ProcessedAt.AddHours(1);
+            defeatedFaction.UpdatedAt = payload.ProcessedAt;
+            await database.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
         await population.EnsureHuntableWildlifeAsync(cancellationToken: cancellationToken);
         await population.EnsureStonehavenResidentsAsync(cancellationToken: cancellationToken);
         await population.EnsureDarkwoodClanMembersAsync(cancellationToken: cancellationToken);

@@ -292,6 +292,20 @@ public sealed class FactionBankTransaction : Entity
     public DateTimeOffset OccurredAt { get; set; }
 }
 
+public sealed class SettlementRecovery : Entity
+{
+    public ResourceOwner Owner { get; set; }
+    public SettlementRecoveryStatus Status { get; set; } = SettlementRecoveryStatus.Healthy;
+    public int FoundingPopulation { get; set; }
+    public DateTimeOffset? DefeatedAt { get; set; }
+    public DateTimeOffset? RecoveryEligibleAt { get; set; }
+    public DateTimeOffset? RebuildingStartedAt { get; set; }
+    public DateTimeOffset? LastProgressedAt { get; set; }
+    public DateTimeOffset? RecoveredAt { get; set; }
+    public string? CurrentStructureKey { get; set; }
+    public int RebuildCycles { get; set; }
+}
+
 public sealed class FactionResource : Entity
 {
     public Guid FactionId { get; set; }
@@ -503,6 +517,7 @@ public enum ResourceKind { Food, Wood, Stone, Iron, Gold }
 public enum ResourceOwner { Stonehaven, Darkwood }
 public enum IronMiningStatus { TravelingToMine, Mining, ReturningHome, WaitingForOre }
 public enum BankTransactionType { FactionSold, FactionBought }
+public enum SettlementRecoveryStatus { Healthy, Defeated, Rebuilding }
 public enum WorldStructureKind { Wall, Gate, Building, Farm, Mine, Dock, Stockpile }
 public enum CreatureStatus { Alive, Dead, Missing, Captured, Promoted, Retired }
 public enum ResidentStatus { Active, Injured, Missing, Dead }
