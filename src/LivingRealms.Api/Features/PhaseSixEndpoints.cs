@@ -188,6 +188,23 @@ public static class PhaseSixEndpoints
                                       StonehavenAssaultStatus.Marching or
                                       StonehavenAssaultStatus.FightingGoblins or
                                       StonehavenAssaultStatus.AttackingCamp;
+        var activeAdministratorCutoff = DateTimeOffset.UtcNow.Subtract(TimeSpan.FromMinutes(2));
+        var administratorOnline = await database.PlayerSessions.AsNoTracking()
+            .AnyAsync(x => x.CharacterId != null &&
+                           x.DisconnectedAt == null &&
+                           x.ExpiresAt > DateTimeOffset.UtcNow &&
+                           x.LastSeenAt != null &&
+                           x.LastSeenAt >= activeAdministratorCutoff &&
+                           x.Account.IsAdministrator,
+                cancellationToken);
+        var anyBattleActive = darkwoodRaidActive || counterattackActive;
+        var darkwoodRaidReady =
+            raidReadyDarkwoodFighters >= WorldPopulationService.AutomaticDarkwoodRaidersRequired &&
+            !anyBattleActive;
+        var counterattackReady =
+            faction.DevelopmentStage >= 3 &&
+            livingStonehavenResidents >= WorldPopulationService.StonehavenAssaultSoldiersRequired &&
+            !anyBattleActive;
         var eventCounts = await database.ScheduledEvents.AsNoTracking()
             .GroupBy(x => x.Status)
             .Select(group => new { Status = group.Key, Count = group.Count() })
@@ -287,18 +304,30 @@ public static class PhaseSixEndpoints
                     "Darkwood raid on Stonehaven",
                     raidReadyDarkwoodFighters,
                     WorldPopulationService.AutomaticDarkwoodRaidersRequired,
+                    darkwoodRaidReady,
                     darkwoodRaidActive,
+                    administratorOnline,
                     darkwoodRaidActive
                         ? "ACTIVE: Darkwood is attacking Stonehaven now."
-                        : $"Darkwood attacks automatically when {WorldPopulationService.AutomaticDarkwoodRaidersRequired} living fighters, not counting its current leader, are available. {raidReadyDarkwoodFighters} are ready now."),
+                        : darkwoodRaidReady
+                            ? administratorOnline
+                                ? "READY: an online administrator may authorize Darkwood's march."
+                                : "READY: waiting for an administrator to log into the game."
+                            : $"Darkwood needs {WorldPopulationService.AutomaticDarkwoodRaidersRequired} living fighters, not counting its current leader. {raidReadyDarkwoodFighters} are ready now."),
                 new TriggerReadinessResponse(
                     "Stonehaven counterattack on Darkwood",
                     livingStonehavenResidents,
                     WorldPopulationService.StonehavenAssaultSoldiersRequired,
+                    counterattackReady,
                     counterattackActive,
+                    administratorOnline,
                     counterattackActive
                         ? $"ACTIVE: {FormatAssaultPhase(counterattack!.Status)}"
-                        : $"Stonehaven attacks with {WorldPopulationService.StonehavenAssaultSoldiersRequired} named soldiers and militia when Darkwood completes camp level 3. Stonehaven has {livingStonehavenResidents}; Darkwood is level {faction.DevelopmentStage}/3.")),
+                        : counterattackReady
+                            ? administratorOnline
+                                ? "READY: an online administrator may authorize Stonehaven's counterattack."
+                                : "READY: waiting for an administrator to log into the game."
+                            : $"Stonehaven needs {WorldPopulationService.StonehavenAssaultSoldiersRequired} living residents and a completed level 3 Darkwood camp. Stonehaven has {livingStonehavenResidents}; Darkwood is level {faction.DevelopmentStage}/3.")),
             new EventQueueResponse(
                 pending,
                 eventCounts.GetValueOrDefault(ScheduledEventStatus.Completed),
@@ -403,7 +432,9 @@ public static class PhaseSixEndpoints
         string Name,
         int Current,
         int Required,
+        bool Ready,
         bool Active,
+        bool AdministratorOnline,
         string Explanation);
     public sealed record EventQueueResponse(
         int Pending,

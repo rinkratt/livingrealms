@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.10
+LIVING REALMS WINDOWS PLAYTEST 0.9.11
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,15 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.11
+- Adds green Journey-page readiness panels for both major campaigns.
+- Requires an online administrator to authorize either campaign before it starts.
+- Adds separate administrator controls for the Darkwood raid and Stonehaven counterattack.
+- Prevents creature attack requests from piling up and replaces rate-limit errors with automatic recovery.
+- Spreads attackers around their targets instead of sending every creature into the same point.
+- Adds stall recovery for roaming dragons and reduces player-avoidance oscillation.
+- Keeps successor goblin leaders visibly identified as faction bosses.
 
 BUILD 0.9.10
 - Keeps collision floors active under persistent creatures on all nine grids,

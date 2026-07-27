@@ -11,7 +11,7 @@ namespace LivingRealms.Client;
 
 public partial class Main : Control
 {
-    private const string ClientVersion = "0.9.10";
+    private const string ClientVersion = "0.9.11";
     private const string UpdateManifestUrl = "https://living-realms.com/downloads/windows-version.json";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -49,6 +49,10 @@ public partial class Main : Control
     private CharacterResponse? _selectedCharacter;
     private StonehavenValley? _world;
     private readonly SemaphoreSlim _worldApiGate = new(1, 1);
+    private int _playerCombatRequestInFlight;
+    private int _creatureCombatRequestInFlight;
+    private DateTimeOffset _creatureCombatCooldownUntil;
+    private DateTimeOffset _combatBackoffUntil;
     private bool _quitting;
     private bool _isAdministrator;
 
@@ -337,12 +341,24 @@ public partial class Main : Control
         Vector3 playerPosition,
         Vector3 creaturePosition)
     {
-        await ResolveCombatAsync(
-            "/api/v1/combat/player-attack",
-            creatureId,
-            playerPosition,
-            creaturePosition,
-            playerAttack: true);
+        if (DateTimeOffset.UtcNow < _combatBackoffUntil ||
+            Interlocked.Exchange(ref _playerCombatRequestInFlight, 1) == 1)
+        {
+            return;
+        }
+        try
+        {
+            await ResolveCombatAsync(
+                "/api/v1/combat/player-attack",
+                creatureId,
+                playerPosition,
+                creaturePosition,
+                playerAttack: true);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _playerCombatRequestInFlight, 0);
+        }
     }
 
     private async void OnWorldCreatureAttackRequested(
@@ -350,12 +366,27 @@ public partial class Main : Control
         Vector3 playerPosition,
         Vector3 creaturePosition)
     {
-        await ResolveCombatAsync(
-            "/api/v1/combat/creature-attack",
-            creatureId,
-            playerPosition,
-            creaturePosition,
-            playerAttack: false);
+        var now = DateTimeOffset.UtcNow;
+        if (now < _combatBackoffUntil ||
+            now < _creatureCombatCooldownUntil ||
+            Interlocked.Exchange(ref _creatureCombatRequestInFlight, 1) == 1)
+        {
+            return;
+        }
+        _creatureCombatCooldownUntil = now.AddMilliseconds(800);
+        try
+        {
+            await ResolveCombatAsync(
+                "/api/v1/combat/creature-attack",
+                creatureId,
+                playerPosition,
+                creaturePosition,
+                playerAttack: false);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _creatureCombatRequestInFlight, 0);
+        }
     }
 
     private async void OnSettlementDefenseAttackRequested(
@@ -497,6 +528,14 @@ public partial class Main : Control
         await ChangeRaidAsync("/api/v1/world/raid/start", starting: true);
     }
 
+    private async void OnCounterattackStartRequested()
+    {
+        await ChangeRaidAsync(
+            "/api/v1/world/raid/counterattack/start",
+            starting: true,
+            counterattack: true);
+    }
+
     private async void OnRaidAdvanceRequested()
     {
         await ChangeRaidAsync("/api/v1/world/raid/advance", starting: false);
@@ -623,6 +662,7 @@ public partial class Main : Control
         world.WorldResetRequested += OnWorldResetRequested;
         world.RaidStateRequested += OnRaidStateRequested;
         world.RaidStartRequested += OnRaidStartRequested;
+        world.CounterattackStartRequested += OnCounterattackStartRequested;
         world.RaidAdvanceRequested += OnRaidAdvanceRequested;
         _world = world;
         _background.Visible = false;
@@ -988,7 +1028,15 @@ public partial class Main : Control
                 authenticated: true);
             if (!response.IsSuccess)
             {
-                world.SetCombatStatus(ReadError(response), response.StatusCode != 429);
+                if (response.StatusCode == 429)
+                {
+                    _combatBackoffUntil = DateTimeOffset.UtcNow.AddSeconds(2);
+                    world.SetCombatStatus("Combat synchronization is catching up. Attacks will resume automatically.", false);
+                }
+                else
+                {
+                    world.SetCombatStatus(ReadError(response), true);
+                }
                 if (response.StatusCode is 404 or 409)
                 {
                     // Another client, a raid resolution, or a world reset may
@@ -1303,7 +1351,7 @@ public partial class Main : Control
         return true;
     }
 
-    private async Task ChangeRaidAsync(string endpoint, bool starting)
+    private async Task ChangeRaidAsync(string endpoint, bool starting, bool counterattack = false)
     {
         var world = _world;
         if (world is null)
@@ -1317,7 +1365,14 @@ public partial class Main : Control
         {
             if (starting)
             {
-                world.SetRaidStartBusy(true);
+                if (counterattack)
+                {
+                    world.SetCounterattackStartBusy(true);
+                }
+                else
+                {
+                    world.SetRaidStartBusy(true);
+                }
             }
             var response = await SendAsync(
                 endpoint,
@@ -1339,7 +1394,9 @@ public partial class Main : Control
             if (starting)
             {
                 world.SetCombatStatus(
-                    "The Darkwood war horn sounded. Four attackers formed at the clan camp and began the road march to Stonehaven.",
+                    counterattack
+                        ? "Stonehaven's authorized force is assembling for the march on Darkwood."
+                        : "The Darkwood war horn sounded. Fifteen authorized raiders are assembling at the clan camp.",
                     false);
             }
             else if (!state.Active && state.Raid?.OutcomeSummary is not null)
@@ -1352,7 +1409,14 @@ public partial class Main : Control
         {
             if (starting)
             {
-                world.SetRaidStartBusy(false);
+                if (counterattack)
+                {
+                    world.SetCounterattackStartBusy(false);
+                }
+                else
+                {
+                    world.SetRaidStartBusy(false);
+                }
             }
             _worldApiGate.Release();
         }
@@ -1570,6 +1634,11 @@ public partial class Main : Control
         state.HasRaid,
         state.Active,
         state.CanStartPlaytest,
+        state.DarkwoodRaidReady,
+        state.StonehavenCounterattackReady,
+        state.AdministratorOnline,
+        state.CanStartDarkwoodRaid,
+        state.CanStartCounterattack,
         state.Raid is null
             ? null
             : new WorldRaidData(
@@ -1648,7 +1717,8 @@ public partial class Main : Control
                 state.Faction.Leader.Health,
                 state.Faction.Leader.MaximumHealth,
                 state.Faction.Leader.Attack,
-                state.Faction.Leader.Defense)),
+                state.Faction.Leader.Defense,
+                state.Faction.Leader.Status)),
         new WorldSettlementData(
             state.Settlement.Name,
             state.Settlement.Population,
@@ -1678,13 +1748,17 @@ public partial class Main : Control
                 state.EventReadiness.DarkwoodRaid.Name,
                 state.EventReadiness.DarkwoodRaid.Current,
                 state.EventReadiness.DarkwoodRaid.Required,
+                state.EventReadiness.DarkwoodRaid.Ready,
                 state.EventReadiness.DarkwoodRaid.Active,
+                state.EventReadiness.DarkwoodRaid.AdministratorOnline,
                 state.EventReadiness.DarkwoodRaid.Explanation),
             new WorldTriggerReadinessData(
                 state.EventReadiness.StonehavenCounterattack.Name,
                 state.EventReadiness.StonehavenCounterattack.Current,
                 state.EventReadiness.StonehavenCounterattack.Required,
+                state.EventReadiness.StonehavenCounterattack.Ready,
                 state.EventReadiness.StonehavenCounterattack.Active,
+                state.EventReadiness.StonehavenCounterattack.AdministratorOnline,
                 state.EventReadiness.StonehavenCounterattack.Explanation)),
         new WorldEventQueueData(state.Events.Pending, state.Events.Completed, state.Events.Failed),
         state.RecentHistory.Select(entry =>
@@ -1773,6 +1847,7 @@ public partial class Main : Control
         _world.WorldResetRequested -= OnWorldResetRequested;
         _world.RaidStateRequested -= OnRaidStateRequested;
         _world.RaidStartRequested -= OnRaidStartRequested;
+        _world.CounterattackStartRequested -= OnCounterattackStartRequested;
         _world.RaidAdvanceRequested -= OnRaidAdvanceRequested;
         _world.QueueFree();
         _world = null;
@@ -2076,6 +2151,11 @@ public partial class Main : Control
         public bool HasRaid { get; init; }
         public bool Active { get; init; }
         public bool CanStartPlaytest { get; init; }
+        public bool DarkwoodRaidReady { get; init; }
+        public bool StonehavenCounterattackReady { get; init; }
+        public bool AdministratorOnline { get; init; }
+        public bool CanStartDarkwoodRaid { get; init; }
+        public bool CanStartCounterattack { get; init; }
         public RaidResponse? Raid { get; init; }
         public StonehavenCounterattackResponse? Counterattack { get; init; }
         public DateTimeOffset ServerTimeCentral { get; init; }
@@ -2355,6 +2435,7 @@ public partial class Main : Control
         public int MaximumHealth { get; init; }
         public int Attack { get; init; }
         public int Defense { get; init; }
+        public string Status { get; init; } = string.Empty;
     }
 
     private sealed class WorldSettlementResponse
@@ -2399,7 +2480,9 @@ public partial class Main : Control
         public string Name { get; init; } = string.Empty;
         public int Current { get; init; }
         public int Required { get; init; }
+        public bool Ready { get; init; }
         public bool Active { get; init; }
+        public bool AdministratorOnline { get; init; }
         public string Explanation { get; init; } = string.Empty;
     }
 

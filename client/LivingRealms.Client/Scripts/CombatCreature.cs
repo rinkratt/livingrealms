@@ -18,6 +18,7 @@ public partial class CombatCreature : CharacterBody3D
     private IReadOnlyList<Vector3> _raidRoute = [];
     private int _raidRouteIndex;
     private Vector3 _raidApproachOffset;
+    private Vector3 _playerApproachOffset;
     private SettlementNpc? _raidDefenseTarget;
     private float _attackCooldown;
     private float _gravity = 9.8f;
@@ -130,12 +131,23 @@ public partial class CombatCreature : CharacterBody3D
                 new Vector3(-12.0f, 0.08f, 11.0f + laneOffset * 0.45f)
             ];
         }
-        var approachAngle = data.Id.ToByteArray()[1] % 8 * Mathf.Tau / 8.0f;
-        var approachRadius = Mathf.Max(1.15f, AttackRange * 0.78f);
+        var idBytes = data.Id.ToByteArray();
+        var approachSlot = BitConverter.ToUInt16(idBytes, 0) % 32;
+        var approachRing = idBytes[2] % 3;
+        var approachAngle = approachSlot * Mathf.Tau / 32.0f;
+        var approachRadius = Mathf.Max(1.35f, AttackRange * 0.78f) + approachRing * 0.65f;
         _raidApproachOffset = new Vector3(
             Mathf.Cos(approachAngle) * approachRadius,
             0,
             Mathf.Sin(approachAngle) * approachRadius);
+        var playerAngle = (approachSlot + 11) % 32 * Mathf.Tau / 32.0f;
+        var playerRadius = Mathf.Min(
+            Mathf.Max(1.2f, AttackRange * 0.72f) + approachRing * 0.45f,
+            AttackRange + 0.35f);
+        _playerApproachOffset = new Vector3(
+            Mathf.Cos(playerAngle) * playerRadius,
+            0,
+            Mathf.Sin(playerAngle) * playerRadius);
         Position = pathfinder.GetNearestWalkablePosition(data.Position);
         _navigationRadius = SpeciesKey switch
         {
@@ -255,8 +267,11 @@ public partial class CombatCreature : CharacterBody3D
         else if (_engagedWithPlayer)
         {
             var hasLineOfSight = HasClearWorldPath(_player.GlobalPosition);
-            movement = playerDistance > AttackRange * 0.9f || !hasLineOfSight
-                ? GetPathDirection(_player.GlobalPosition, seconds, returningHome: false)
+            var playerApproach = _pathfinder.GetNearestWalkablePosition(
+                _player.GlobalPosition + _playerApproachOffset);
+            var approachDistance = HorizontalDistance(GlobalPosition, playerApproach);
+            movement = approachDistance > 0.55f || !hasLineOfSight
+                ? GetPathDirection(playerApproach, seconds, returningHome: false)
                 : Vector3.Zero;
             if (hasLineOfSight && playerDistance <= AttackRange + 0.6f && _attackCooldown <= 0)
             {

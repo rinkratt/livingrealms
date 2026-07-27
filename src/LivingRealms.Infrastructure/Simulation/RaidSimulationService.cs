@@ -88,10 +88,10 @@ public sealed partial class RaidSimulationService(
                         x.Role != "Raid Attacker" &&
                         x.Id != leader.Id)
             .ToListAsync(cancellationToken);
-        var automaticRaid = source.Equals("world-simulation", StringComparison.OrdinalIgnoreCase);
-        var raidSize = automaticRaid
-            ? WorldPopulationService.AutomaticDarkwoodRaidersRequired
-            : 4;
+        var developmentPlaytest = source.Equals("development-control", StringComparison.OrdinalIgnoreCase);
+        var raidSize = developmentPlaytest
+            ? 4
+            : WorldPopulationService.AutomaticDarkwoodRaidersRequired;
         var raidMembers = availableMembers
             .OrderBy(x => x.Title switch
             {
@@ -592,47 +592,9 @@ public sealed partial class RaidSimulationService(
 
         await population.EnsureDarkwoodClanMembersAsync(cancellationToken: cancellationToken);
         await population.EnsureStonehavenResidentsAsync(cancellationToken: cancellationToken);
-        var faction = await database.Factions
-            .SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodClanId, cancellationToken);
-        var currentWorldDay = (int)(faction.SimulatedHours / 24) + 1;
-        var stonehavenFighters = await database.SettlementResidents.AsNoTracking()
-            .CountAsync(x => x.SettlementId == LivingRealmsDbContext.StonehavenVillageId &&
-                             x.Health > 0 &&
-                             (x.Status == ResidentStatus.Active || x.Status == ResidentStatus.Injured),
-                cancellationToken);
-        var latestAssaultWorldDay = await database.StonehavenAssaults.AsNoTracking()
-            .OrderByDescending(x => x.WorldDay)
-            .Select(x => (int?)x.WorldDay)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (faction.DevelopmentStage >= 3 &&
-            stonehavenFighters >= WorldPopulationService.StonehavenAssaultSoldiersRequired &&
-            (latestAssaultWorldDay is null || currentWorldDay >= latestAssaultWorldDay.Value + 2))
-        {
-            await StartStonehavenAssaultAsync(processedAt, cancellationToken);
-            return;
-        }
-
-        var availableRaiders = await database.Creatures.AsNoTracking()
-            .CountAsync(x => x.FactionId == faction.Id &&
-                             x.Id != faction.LeaderCreatureId &&
-                             x.Status == CreatureStatus.Alive &&
-                             x.Health > 0 &&
-                             x.Role != "Raid Attacker",
-                cancellationToken);
-        if (availableRaiders < WorldPopulationService.AutomaticDarkwoodRaidersRequired)
-        {
-            return;
-        }
-
-        var latestWorldDay = await database.SettlementRaids.AsNoTracking()
-            .Where(x => x.SettlementId == LivingRealmsDbContext.StonehavenVillageId)
-            .OrderByDescending(x => x.WorldDay)
-            .Select(x => (int?)x.WorldDay)
-            .FirstOrDefaultAsync(cancellationToken);
-        if (latestWorldDay is null || currentWorldDay >= latestWorldDay.Value + 1)
-        {
-            await StartRaidAsync(processedAt, "world-simulation", cancellationToken);
-        }
+        // Readiness is exposed by the world and raid endpoints. A battle only
+        // enters its active state after an authenticated administrator presses
+        // the matching authorization control in the game client.
     }
 
     private async Task<StonehavenAssault?> LoadActiveStonehavenAssaultAsync(

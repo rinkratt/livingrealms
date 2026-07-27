@@ -4,7 +4,7 @@ namespace LivingRealms.Client;
 
 public partial class StonehavenValley : Node3D
 {
-    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.10";
+    private const string FeedbackUrl = "https://living-realms.com/feedback.php?source=game&build=0.9.11";
     private const float KnockoutProtectionDuration = 8.0f;
     private const float TargetCycleRadius = 32.0f;
     private const float WorldGridSize = 96.0f;
@@ -82,11 +82,14 @@ public partial class StonehavenValley : Node3D
     private Label _carriedResourcesHudLabel = null!;
     private Label _worldSummary = null!;
     private Label _worldDetails = null!;
+    private Label _darkwoodReadiness = null!;
+    private Label _counterattackReadiness = null!;
     private Label _raidDetails = null!;
     private Label _chronicleText = null!;
     private Button _advanceWorldButton = null!;
     private Button _resetWorldButton = null!;
     private Button _startRaidButton = null!;
+    private Button _startCounterattackButton = null!;
     private Button _refreshWorldButton = null!;
     private Node3D _darkwoodCamp = null!;
     private Node3D _constructionRoot = null!;
@@ -146,6 +149,7 @@ public partial class StonehavenValley : Node3D
     public event Action? WorldResetRequested;
     public event Action? RaidStateRequested;
     public event Action? RaidStartRequested;
+    public event Action? CounterattackStartRequested;
     public event Action? RaidAdvanceRequested;
     public event Action<Guid, Guid, Vector3, Vector3>? SettlementDefenseAttackRequested;
 
@@ -1270,7 +1274,7 @@ public partial class StonehavenValley : Node3D
         _worldDetails.Text =
             $"DARKWOOD CLAN — GOBLIN FACTION\n" +
             $"Leader: {faction.Leader.Name}, {faction.Leader.Title}   •   level {faction.Leader.Level}   •   leadership {faction.Leader.Leadership}\n" +
-            $"Gorvak: health {faction.Leader.Health}/{faction.Leader.MaximumHealth}   •   attack {faction.Leader.Attack}   •   defense {faction.Leader.Defense}   •   threat {threat}\n" +
+            $"Current leader record: {faction.Leader.Status.ToUpperInvariant()}   •   health {faction.Leader.Health}/{faction.Leader.MaximumHealth}   •   attack {faction.Leader.Attack}   •   defense {faction.Leader.Defense}   •   threat {threat}\n" +
             $"Clan: {faction.Population} living goblins / {faction.PopulationCapacity} capacity   •   military power {faction.MilitaryStrength}   •   morale {faction.Morale}   •   aggression {faction.Aggression}\n" +
             $"Darkwood resources: {resources}\n" +
             $"Darkwood structures: {structures}\n\n" +
@@ -1281,10 +1285,10 @@ public partial class StonehavenValley : Node3D
             $"Population: {state.Settlement.LivingResidents}/{state.Settlement.HousingCapacity} housed named residents   •   combat-ready {state.Settlement.CombatReadyResidents}   •   defense rating {state.Settlement.DefenseRating}   •   military power {state.Settlement.GuardStrength}\n" +
             $"Village supplies: food {state.Settlement.Food}   •   wood {state.Settlement.Wood}   •   stone {state.Settlement.Stone}   •   iron {state.Settlement.Iron}\n" +
             $"Growth: at most one new resident per world day, only when housing and the required food, timber, stone, and iron are available.\n\n" +
-            $"NEXT AUTOMATIC WORLD EVENTS\n" +
-            $"{darkwoodRaid.Name}: {darkwoodRaid.Current}/{darkwoodRaid.Required}   •   {(darkwoodRaid.Active ? "ACTIVE" : "WAITING")}\n{darkwoodRaid.Explanation}\n" +
-            $"{counterattack.Name}: {counterattack.Current}/{counterattack.Required}   •   {(counterattack.Active ? "ACTIVE" : "WAITING")}\n{counterattack.Explanation}" +
+            "CAMPAIGN READINESS\nBattles become ready from living-world conditions, but only an online administrator can authorize their start." +
             adminJobs;
+        SetReadinessLabel(_darkwoodReadiness, darkwoodRaid);
+        SetReadinessLabel(_counterattackReadiness, counterattack);
         _chronicleText.Text = state.RecentHistory.Count == 0
             ? "No chronicles have been recorded yet."
             : string.Join("\n\n", state.RecentHistory.Take(6).Select(entry =>
@@ -1298,6 +1302,30 @@ public partial class StonehavenValley : Node3D
         _resetWorldButton.Text = "Reset Living World  [Playtest]";
         _resetConfirmationSeconds = 0;
         ApplyDarkwoodCampStage(faction.DevelopmentStage);
+    }
+
+    private static void SetReadinessLabel(Label label, WorldTriggerReadinessData readiness)
+    {
+        if (!GodotObject.IsInstanceValid(label))
+        {
+            return;
+        }
+
+        var status = readiness.Active
+            ? "ACTIVE"
+            : readiness.Ready
+                ? readiness.AdministratorOnline
+                    ? "READY — ADMINISTRATOR MAY AUTHORIZE"
+                    : "READY — WAITING FOR ADMINISTRATOR"
+                : "NOT READY";
+        label.Text =
+            $"{readiness.Name.ToUpperInvariant()}  •  {status}\n" +
+            $"{readiness.Current}/{readiness.Required}  •  {readiness.Explanation}";
+        label.Modulate = readiness.Active
+            ? new Color("f0644c")
+            : readiness.Ready
+                ? new Color("6ed58a")
+                : new Color("d7c7a5");
     }
 
     public void SetWorldAdvanceBusy(bool busy)
@@ -1329,6 +1357,17 @@ public partial class StonehavenValley : Node3D
         }
     }
 
+    public void SetCounterattackStartBusy(bool busy)
+    {
+        if (IsInstanceValid(_startCounterattackButton))
+        {
+            _startCounterattackButton.Disabled = busy;
+            _startCounterattackButton.Text = busy
+                ? "Stonehaven Is Assembling..."
+                : "Authorize Stonehaven Counterattack";
+        }
+    }
+
     public void SetRaidState(WorldRaidStateData state)
     {
         _raidActive = state.Active;
@@ -1345,9 +1384,12 @@ public partial class StonehavenValley : Node3D
             return;
         }
 
-        _startRaidButton.Visible = state.CanStartPlaytest;
+        _startRaidButton.Visible = state.CanStartDarkwoodRaid;
         _startRaidButton.Disabled = false;
-        _startRaidButton.Text = "Start Darkwood Raid  [Playtest]";
+        _startRaidButton.Text = "Authorize Darkwood Raid";
+        _startCounterattackButton.Visible = state.CanStartCounterattack;
+        _startCounterattackButton.Disabled = false;
+        _startCounterattackButton.Text = "Authorize Stonehaven Counterattack";
         if (state.Counterattack is not null &&
             (_counterattackActive || state.Raid is null ||
              state.Counterattack.WorldDay >= state.Raid.WorldDay))
@@ -1377,7 +1419,7 @@ public partial class StonehavenValley : Node3D
         {
             _raidHudLabel.Visible = false;
             _raidDetails.Text =
-                "No battle is underway. Darkwood automatically raids when 15 raid-ready goblins are available. Stonehaven automatically counterattacks with 20 people after Darkwood completes camp level 3.";
+                "No battle is underway. A ready campaign remains paused until an online administrator authorizes it from this Journey page.";
             return;
         }
 
@@ -1919,7 +1961,7 @@ public partial class StonehavenValley : Node3D
                 new WorldStructureData("Hide Tents", 1, 100),
                 new WorldStructureData("Crude Stockpile", 1, 100)
             ],
-            new WorldLeaderData("Gorvak", "Goblin Chief", 8, 10, 180, 180, 22, 14)),
+            new WorldLeaderData("Gorvak", "Goblin Chief", 8, 10, 180, 180, 22, 14, "Alive")),
         new WorldSettlementData(
             "Stonehaven Village",
             8,
@@ -1950,11 +1992,15 @@ public partial class StonehavenValley : Node3D
                 6,
                 15,
                 false,
+                false,
+                false,
                 "A raid launches when Darkwood has 15 living raid-ready goblins; its current leader remains at the camp and is not counted."),
             new WorldTriggerReadinessData(
                 "Stonehaven counterattack on Darkwood",
                 8,
                 20,
+                false,
+                false,
                 false,
                 "Guard Captain Mira assembles 20 living residents after Darkwood completes camp level 3.")),
         new WorldEventQueueData(0, 0, 0),
@@ -4448,7 +4494,15 @@ public partial class StonehavenValley : Node3D
         _worldDetails = CreateLabel("Persistent faction state is loading...", 14, Parchment);
         _worldDetails.AutowrapMode = TextServer.AutowrapMode.WordSmart;
         content.AddChild(_worldDetails);
-        var raidHeading = CreateLabel("STONEHAVEN RAID", 22, new Color("d35a45"));
+        var readinessHeading = CreateLabel("CAMPAIGN READINESS", 22, Gold);
+        content.AddChild(readinessHeading);
+        _darkwoodReadiness = CreateLabel("Loading Darkwood campaign readiness...", 15, Parchment);
+        _darkwoodReadiness.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        content.AddChild(_darkwoodReadiness);
+        _counterattackReadiness = CreateLabel("Loading Stonehaven campaign readiness...", 15, Parchment);
+        _counterattackReadiness.AutowrapMode = TextServer.AutowrapMode.WordSmart;
+        content.AddChild(_counterattackReadiness);
+        var raidHeading = CreateLabel("ACTIVE CAMPAIGN / LAST BATTLE", 22, new Color("d35a45"));
         content.AddChild(raidHeading);
         _raidDetails = CreateLabel("Loading Stonehaven's raid state...", 14, Parchment);
         _raidDetails.AutowrapMode = TextServer.AutowrapMode.WordSmart;
@@ -4467,7 +4521,7 @@ public partial class StonehavenValley : Node3D
         actions.AddThemeConstantOverride("h_separation", 14);
         actions.AddThemeConstantOverride("v_separation", 8);
         layout.AddChild(actions);
-        _startRaidButton = CreateButton("Start Darkwood Raid  [Playtest]");
+        _startRaidButton = CreateButton("Authorize Darkwood Raid");
         _startRaidButton.Visible = false;
         _startRaidButton.Pressed += () =>
         {
@@ -4475,6 +4529,14 @@ public partial class StonehavenValley : Node3D
             RaidStartRequested?.Invoke();
         };
         actions.AddChild(_startRaidButton);
+        _startCounterattackButton = CreateButton("Authorize Stonehaven Counterattack");
+        _startCounterattackButton.Visible = false;
+        _startCounterattackButton.Pressed += () =>
+        {
+            SetCounterattackStartBusy(true);
+            CounterattackStartRequested?.Invoke();
+        };
+        actions.AddChild(_startCounterattackButton);
         _advanceWorldButton = CreateButton("Advance 24 World Hours  [Playtest]");
         _advanceWorldButton.Visible = false;
         _advanceWorldButton.Pressed += () =>
@@ -4798,6 +4860,11 @@ public sealed record WorldRaidStateData(
     bool HasRaid,
     bool Active,
     bool CanStartPlaytest,
+    bool DarkwoodRaidReady,
+    bool StonehavenCounterattackReady,
+    bool AdministratorOnline,
+    bool CanStartDarkwoodRaid,
+    bool CanStartCounterattack,
     WorldRaidData? Raid,
     WorldCounterattackData? Counterattack);
 
@@ -4921,7 +4988,8 @@ public sealed record WorldLeaderData(
     int Health,
     int MaximumHealth,
     int Attack,
-    int Defense);
+    int Defense,
+    string Status);
 public sealed record WorldSettlementData(
     string Name,
     int Population,
@@ -4954,7 +5022,9 @@ public sealed record WorldTriggerReadinessData(
     string Name,
     int Current,
     int Required,
+    bool Ready,
     bool Active,
+    bool AdministratorOnline,
     string Explanation);
 public sealed record WorldEventQueueData(int Pending, int Completed, int Failed);
 public sealed record WorldHistoryData(string Title, string Description, DateTimeOffset OccurredAtCentral);

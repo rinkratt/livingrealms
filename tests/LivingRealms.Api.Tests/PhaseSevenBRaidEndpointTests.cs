@@ -117,6 +117,9 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         Assert.NotNull(state);
         Assert.False(state.CanStartPlaytest);
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsync("/api/v1/world/raid/start", null)).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.Forbidden,
+            (await client.PostAsync("/api/v1/world/raid/counterattack/start", null)).StatusCode);
 
         using var scope = _factory.Services.CreateScope();
         var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
@@ -471,8 +474,12 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
     }
 
     [Fact]
-    public async Task LevelThreeCampAutomaticallyStartsAndResolvesStonehavenCounterattack()
+    public async Task LevelThreeCampWaitsForAdministratorAuthorizationBeforeCounterattack()
     {
+        using var client = _factory.CreateClient();
+        var registration = await RegisterAsync(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", registration.Token);
+        await SelectAldenAsync(client, registration);
         var processedAt = new DateTimeOffset(2026, 7, 17, 18, 0, 0, TimeSpan.Zero);
         using (var populationScope = _factory.Services.CreateScope())
         {
@@ -496,6 +503,15 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             await world.AdvanceForTestingAsync(24, processedAt.AddMinutes(step));
         }
 
+        using (var waitingScope = _factory.Services.CreateScope())
+        {
+            var database = waitingScope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
+            Assert.Empty(await database.StonehavenAssaults.ToListAsync());
+        }
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.PostAsync("/api/v1/world/raid/counterattack/start", null)).StatusCode);
+
         using (var activeScope = _factory.Services.CreateScope())
         {
             var database = activeScope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
@@ -508,13 +524,11 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
 
         using (var scope = _factory.Services.CreateScope())
         {
-            var world = scope.ServiceProvider.GetRequiredService<WorldSimulationService>();
-            await world.AdvanceForTestingAsync(48, processedAt.AddMinutes(1));
-        }
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var world = scope.ServiceProvider.GetRequiredService<WorldSimulationService>();
-            await world.AdvanceForTestingAsync(48, processedAt.AddMinutes(2));
+            var simulation = scope.ServiceProvider.GetRequiredService<RaidSimulationService>();
+            await simulation.AdvanceActiveStonehavenAssaultAsync(
+                processedAt.AddMinutes(1),
+                rounds: 100,
+                ignoreMinimumInterval: true);
         }
 
         using var verificationScope = _factory.Services.CreateScope();
@@ -534,8 +548,12 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
     }
 
     [Fact]
-    public async Task FifteenRaidReadyGoblinsAutomaticallyLaunchOnStonehaven()
+    public async Task FifteenRaidReadyGoblinsWaitForAdministratorAuthorization()
     {
+        using var client = _factory.CreateClient();
+        var registration = await RegisterAsync(client);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", registration.Token);
+        await SelectAldenAsync(client, registration);
         var processedAt = new DateTimeOffset(2026, 7, 17, 18, 0, 0, TimeSpan.Zero);
         using var scope = _factory.Services.CreateScope();
         var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
@@ -549,6 +567,17 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         await population.EnsureDarkwoodClanMembersAsync();
         var simulation = scope.ServiceProvider.GetRequiredService<RaidSimulationService>();
         await simulation.EvaluateWorldProgressionAsync(1, processedAt);
+
+        Assert.Empty(await database.SettlementRaids.ToListAsync());
+        var readiness = Assert.IsType<RaidStateResponse>(
+            await (await client.GetAsync("/api/v1/world/raid"))
+                .Content.ReadFromJsonAsync<RaidStateResponse>(JsonOptions));
+        Assert.True(readiness.DarkwoodRaidReady);
+        Assert.True(readiness.AdministratorOnline);
+        Assert.True(readiness.CanStartDarkwoodRaid);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.PostAsync("/api/v1/world/raid/start", null)).StatusCode);
 
         var raid = await database.SettlementRaids
             .Include(x => x.Attackers)
@@ -591,6 +620,11 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         bool HasRaid,
         bool Active,
         bool CanStartPlaytest,
+        bool DarkwoodRaidReady,
+        bool StonehavenCounterattackReady,
+        bool AdministratorOnline,
+        bool CanStartDarkwoodRaid,
+        bool CanStartCounterattack,
         RaidResponse? Raid,
         DateTimeOffset ServerTimeCentral);
     private sealed record RaidResponse(

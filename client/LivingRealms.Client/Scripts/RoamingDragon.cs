@@ -30,6 +30,9 @@ public partial class RoamingDragon : Node3D
     private Func<IEnumerable<Vector3>>? _dragonPositionProvider;
     private string _displayName = "Dragon";
     private string _currentMode = "Idle";
+    private float _noProgressSeconds;
+    private float _bestDestinationDistance = float.MaxValue;
+    private int _stallRecoveries;
 
     public string CurrentMode => _currentMode;
 
@@ -115,10 +118,12 @@ public partial class RoamingDragon : Node3D
         if (_currentMode.Equals("Fly", StringComparison.OrdinalIgnoreCase))
         {
             UpdateFlight(seconds);
+            UpdateProgressWatchdog(seconds);
             return;
         }
 
         UpdateGroundTravel(seconds);
+        UpdateProgressWatchdog(seconds);
     }
 
     private void BeginNextTravel()
@@ -172,6 +177,7 @@ public partial class RoamingDragon : Node3D
         {
             _pathWaypoint++;
         }
+        ResetProgressWatchdog();
         SetMode(mode);
     }
 
@@ -182,6 +188,7 @@ public partial class RoamingDragon : Node3D
         _landing = false;
         _plannedPath.Clear();
         _pathWaypoint = 0;
+        ResetProgressWatchdog();
         SetMode("Fly");
     }
 
@@ -286,6 +293,7 @@ public partial class RoamingDragon : Node3D
         _pathWaypoint = 0;
         _landing = false;
         _stateSeconds = _random.RandfRange(2.5f, 5.5f);
+        ResetProgressWatchdog();
         SetMode("Idle");
     }
 
@@ -319,8 +327,8 @@ public partial class RoamingDragon : Node3D
         {
             correction += GetSeparation(
                 _playerPositionProvider(),
-                clearance: 17.0f,
-                strength: 2.2f);
+                clearance: 7.5f,
+                strength: 1.15f);
         }
 
         if (_dragonPositionProvider is not null)
@@ -361,6 +369,72 @@ public partial class RoamingDragon : Node3D
         }
 
         return away.Normalized() * ((clearance - distance) / clearance) * strength;
+    }
+
+    private void UpdateProgressWatchdog(float seconds)
+    {
+        if (_currentMode.Equals("Idle", StringComparison.OrdinalIgnoreCase))
+        {
+            ResetProgressWatchdog();
+            return;
+        }
+
+        var distance = HorizontalDistance(GlobalPosition, _destination);
+        if (distance < _bestDestinationDistance - 0.18f)
+        {
+            _bestDestinationDistance = distance;
+            _noProgressSeconds = 0;
+            _stallRecoveries = Math.Max(0, _stallRecoveries - 1);
+            return;
+        }
+
+        _noProgressSeconds += seconds;
+        if (_noProgressSeconds < 2.2f)
+        {
+            return;
+        }
+
+        _noProgressSeconds = 0;
+        _bestDestinationDistance = float.MaxValue;
+        _stallRecoveries++;
+        if (_currentMode.Equals("Fly", StringComparison.OrdinalIgnoreCase) || _stallRecoveries >= 2)
+        {
+            // A stale landing approach or avoidance loop must never hold a
+            // roaming dragon indefinitely. Select a fresh, walkable map anchor
+            // and approach it from altitude.
+            _destination = SelectNextMapAnchor();
+            _flightAltitude = _random.RandfRange(12.0f, 18.0f);
+            _landing = false;
+            _plannedPath.Clear();
+            _pathWaypoint = 0;
+            SetMode("Fly");
+            return;
+        }
+
+        _plannedPath.Clear();
+        _plannedPath.AddRange(_pathfinder.FindPath(GlobalPosition, _destination));
+        _pathWaypoint = 0;
+        while (_pathWaypoint < _plannedPath.Count &&
+               HorizontalDistance(GlobalPosition, _plannedPath[_pathWaypoint]) <= 1.5f)
+        {
+            _pathWaypoint++;
+        }
+        if (_pathWaypoint >= _plannedPath.Count)
+        {
+            BeginFlight();
+        }
+    }
+
+    private void ResetProgressWatchdog()
+    {
+        _noProgressSeconds = 0;
+        _bestDestinationDistance = _currentMode.Equals("Idle", StringComparison.OrdinalIgnoreCase)
+            ? float.MaxValue
+            : HorizontalDistance(GlobalPosition, _destination);
+        if (_currentMode.Equals("Idle", StringComparison.OrdinalIgnoreCase))
+        {
+            _stallRecoveries = 0;
+        }
     }
 
     private static AnimationPlayer? FindAnimationPlayer(Node node)

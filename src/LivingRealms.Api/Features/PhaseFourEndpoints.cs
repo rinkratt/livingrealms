@@ -49,8 +49,13 @@ public static class PhaseFourEndpoints
             .OrderBy(x => x.Level)
             .ThenBy(x => x.Name)
             .ToListAsync(context.RequestAborted);
+        var darkwoodLeaderId = await database.Factions.AsNoTracking()
+            .Where(x => x.Id == LivingRealmsDbContext.DarkwoodClanId)
+            .Select(x => x.LeaderCreatureId)
+            .SingleAsync(context.RequestAborted);
 
-        return Results.Ok(creatures.Select(ToCreatureResponse));
+        return Results.Ok(creatures.Select(creature =>
+            ToCreatureResponse(creature, creature.Id == darkwoodLeaderId)));
     }
 
     private static async Task<IResult> SaveCreaturePositionsAsync(
@@ -656,7 +661,7 @@ public static class PhaseFourEndpoints
             character.UpdatedAt);
     }
 
-    private static CreatureResponse ToCreatureResponse(Creature creature)
+    private static CreatureResponse ToCreatureResponse(Creature creature, bool isFactionLeader = false)
     {
         return new CreatureResponse(
             creature.Id,
@@ -678,6 +683,7 @@ public static class PhaseFourEndpoints
             new PositionResponse(creature.PositionX, creature.PositionY, creature.PositionZ),
             new PositionResponse(creature.SpawnX, creature.SpawnY, creature.SpawnZ),
             creature.RespawnAt,
+            isFactionLeader ||
             creature.SpeciesId == LivingRealmsDbContext.GoblinChiefSpeciesId);
     }
 

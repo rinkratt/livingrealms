@@ -10,11 +10,14 @@ namespace LivingRealms.Api.Features;
 
 public static class PhaseSevenBRaidEndpoints
 {
+    private static readonly TimeSpan ActiveAdministratorWindow = TimeSpan.FromMinutes(2);
+
     public static IEndpointRouteBuilder MapPhaseSevenBRaidEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var raid = endpoints.MapGroup("/api/v1/world/raid").RequireAuthorization();
         raid.MapGet("", GetRaidAsync);
         raid.MapPost("/start", StartRaidAsync).RequireRateLimiting("gameplay");
+        raid.MapPost("/counterattack/start", StartCounterattackAsync).RequireRateLimiting("gameplay");
         raid.MapPost("/advance", AdvanceRaidAsync).RequireRateLimiting("gameplay");
         return endpoints;
     }
@@ -45,16 +48,55 @@ public static class PhaseSevenBRaidEndpoints
         {
             return Results.Forbid();
         }
-        if (!environment.IsDevelopment() && !environment.IsEnvironment("Testing"))
-        {
-            return Results.NotFound();
-        }
         if (!await HasSelectedCharacterAsync(context, database))
         {
             return Results.Conflict(new ErrorResponse("Select a character before starting the raid playtest."));
         }
 
-        await simulation.StartRaidAsync(DateTimeOffset.UtcNow, "development-control", context.RequestAborted);
+        var state = await BuildStateAsync(database, environment, true, context.RequestAborted);
+        var developmentPlaytest = environment.IsEnvironment("Testing");
+        var fullCampaignAuthorization = state.CanStartDarkwoodRaid;
+        if (!fullCampaignAuthorization && !(developmentPlaytest && state.CanStartPlaytest))
+        {
+            return Results.Conflict(new ErrorResponse(
+                state.AdministratorOnline
+                    ? $"Darkwood is not ready. It needs {WorldPopulationService.AutomaticDarkwoodRaidersRequired} available fighters and no active conflict."
+                    : "A game administrator must be online before a battle can be authorized."));
+        }
+
+        await simulation.StartRaidAsync(
+            DateTimeOffset.UtcNow,
+            fullCampaignAuthorization ? "administrator-authorization" : "development-control",
+            context.RequestAborted);
+        return Results.Ok(await BuildStateAsync(database, environment, true, context.RequestAborted));
+    }
+
+    private static async Task<IResult> StartCounterattackAsync(
+        HttpContext context,
+        LivingRealmsDbContext database,
+        RaidSimulationService simulation,
+        IHostEnvironment environment)
+    {
+        if (!context.User.IsInRole("Administrator"))
+        {
+            return Results.Forbid();
+        }
+        if (!await HasSelectedCharacterAsync(context, database))
+        {
+            return Results.Conflict(new ErrorResponse(
+                "Select a character before authorizing Stonehaven's counterattack."));
+        }
+
+        var state = await BuildStateAsync(database, environment, true, context.RequestAborted);
+        if (!state.CanStartCounterattack)
+        {
+            return Results.Conflict(new ErrorResponse(
+                state.AdministratorOnline
+                    ? $"Stonehaven is not ready. It needs {WorldPopulationService.StonehavenAssaultSoldiersRequired} living residents, a completed level 3 Darkwood camp, and no active conflict."
+                    : "A game administrator must be online before a battle can be authorized."));
+        }
+
+        await simulation.StartStonehavenAssaultAsync(DateTimeOffset.UtcNow, context.RequestAborted);
         return Results.Ok(await BuildStateAsync(database, environment, true, context.RequestAborted));
     }
 
@@ -105,19 +147,74 @@ public static class PhaseSevenBRaidEndpoints
             StonehavenAssaultStatus.FightingGoblins or
             StonehavenAssaultStatus.AttackingCamp;
         var raidActive = raid?.Status == SettlementRaidStatus.Active;
-        var canStart = isAdministrator &&
-                       (environment.IsDevelopment() || environment.IsEnvironment("Testing")) &&
-                       !counterattackActive &&
-                       (raid is null ||
-                        (raid.Status is not SettlementRaidStatus.Active and not SettlementRaidStatus.Scheduled &&
-                         !hasSurvivingRaiders));
+        var faction = await database.Factions.AsNoTracking()
+            .SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodClanId, cancellationToken);
+        var availableDarkwoodFighters = await database.Creatures.AsNoTracking()
+            .CountAsync(x => x.FactionId == faction.Id &&
+                             x.Id != faction.LeaderCreatureId &&
+                             x.Status == CreatureStatus.Alive &&
+                             x.Health > 0 &&
+                             x.Role != "Raid Attacker",
+                cancellationToken);
+        var livingStonehavenResidents = await database.SettlementResidents.AsNoTracking()
+            .CountAsync(x => x.SettlementId == LivingRealmsDbContext.StonehavenVillageId &&
+                             x.Health > 0 &&
+                             (x.Status == ResidentStatus.Active || x.Status == ResidentStatus.Injured),
+                cancellationToken);
+        var administratorOnline = await IsAdministratorOnlineAsync(database, cancellationToken);
+        var noLingeringRaid = raid is null ||
+                             (raid.Status is not SettlementRaidStatus.Active and
+                                 not SettlementRaidStatus.Scheduled &&
+                              !hasSurvivingRaiders);
+        var darkwoodRaidReady =
+            availableDarkwoodFighters >= WorldPopulationService.AutomaticDarkwoodRaidersRequired &&
+            !counterattackActive &&
+            noLingeringRaid;
+        var counterattackReady =
+            faction.DevelopmentStage >= 3 &&
+            livingStonehavenResidents >= WorldPopulationService.StonehavenAssaultSoldiersRequired &&
+            !counterattackActive &&
+            !raidActive &&
+            !hasSurvivingRaiders;
+        var canStartDarkwoodRaid = isAdministrator && administratorOnline && darkwoodRaidReady;
+        var canStartCounterattack = isAdministrator && administratorOnline && counterattackReady;
+        var canStartPlaytest = isAdministrator &&
+                               administratorOnline &&
+                               environment.IsEnvironment("Testing") &&
+                               !counterattackActive &&
+                               (raid is null ||
+                                raid.Status is not SettlementRaidStatus.Active and
+                                    not SettlementRaidStatus.Scheduled &&
+                                (raid.Status != SettlementRaidStatus.AttackersWon ||
+                                 !hasSurvivingRaiders));
         return new RaidStateResponse(
             raid is not null,
             raidActive || counterattackActive,
-            canStart,
+            canStartPlaytest,
+            darkwoodRaidReady,
+            counterattackReady,
+            administratorOnline,
+            canStartDarkwoodRaid,
+            canStartCounterattack,
             raid is null ? null : ToResponse(raid),
             counterattack is null ? null : ToResponse(counterattack),
             CentralClock.Now);
+    }
+
+    private static async Task<bool> IsAdministratorOnlineAsync(
+        LivingRealmsDbContext database,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var cutoff = now.Subtract(ActiveAdministratorWindow);
+        return await database.PlayerSessions.AsNoTracking()
+            .AnyAsync(x => x.CharacterId != null &&
+                           x.DisconnectedAt == null &&
+                           x.ExpiresAt > now &&
+                           x.LastSeenAt != null &&
+                           x.LastSeenAt >= cutoff &&
+                           x.Account.IsAdministrator,
+                cancellationToken);
     }
 
     private static RaidResponse ToResponse(SettlementRaid raid) => new(
@@ -205,6 +302,11 @@ public static class PhaseSevenBRaidEndpoints
         bool HasRaid,
         bool Active,
         bool CanStartPlaytest,
+        bool DarkwoodRaidReady,
+        bool StonehavenCounterattackReady,
+        bool AdministratorOnline,
+        bool CanStartDarkwoodRaid,
+        bool CanStartCounterattack,
         RaidResponse? Raid,
         StonehavenCounterattackResponse? Counterattack,
         DateTimeOffset ServerTimeCentral);

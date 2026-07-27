@@ -53,8 +53,10 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal("Reeve of Stonehaven", initial.Settlement.Leader.Title);
         Assert.Equal(6, initial.EventReadiness.DarkwoodRaid.Current);
         Assert.Equal(15, initial.EventReadiness.DarkwoodRaid.Required);
+        Assert.False(initial.EventReadiness.DarkwoodRaid.Ready);
         Assert.Equal(8, initial.EventReadiness.StonehavenCounterattack.Current);
         Assert.Equal(20, initial.EventReadiness.StonehavenCounterattack.Required);
+        Assert.False(initial.EventReadiness.StonehavenCounterattack.Ready);
         Assert.Contains(initial.RecentHistory, x => x.EventType == "faction_founded");
 
         var advancedResponse = await client.PostAsJsonAsync("/api/v1/world/advance", new AdvanceWorldRequest(24));
@@ -362,7 +364,9 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         string Name,
         int Current,
         int Required,
+        bool Ready,
         bool Active,
+        bool AdministratorOnline,
         string Explanation);
     private sealed record EventQueueResponse(int Pending, int Completed, int Failed);
     private sealed record HistoryResponse(Guid Id, string EventType, string Title, string Description, int ImportanceLevel, DateTimeOffset OccurredAtCentral);
