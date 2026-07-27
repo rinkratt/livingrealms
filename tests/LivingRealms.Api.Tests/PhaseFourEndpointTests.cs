@@ -46,6 +46,7 @@ public sealed class PhaseFourEndpointTests : IClassFixture<PhaseTwoWebApplicatio
             creatures.Select(x => x.SpeciesKey).Distinct().Order().ToArray());
         var testCreatures = creatures
             .Where(x => x.SpeciesKey is "forest-rat" or "prairie-wolf")
+            .Where(x => x.Role != "Wildlife")
             .ToArray();
         Assert.Equal(5, testCreatures.Length);
         Assert.All(testCreatures, creature =>
@@ -53,6 +54,11 @@ public sealed class PhaseFourEndpointTests : IClassFixture<PhaseTwoWebApplicatio
             Assert.InRange(creature.Position.X, 48.0f, 144.0f);
             Assert.InRange(creature.Position.Z, 48.0f, 144.0f);
         });
+        Assert.Equal(
+            10,
+            creatures.Count(x =>
+                x.Role == "Wildlife" &&
+                x.SpeciesKey is "forest-rat" or "prairie-wolf"));
         Assert.Single(creatures, x => x.IsBoss && x.SpeciesKey == "goblin-chief");
         Assert.Equal("Alden", registration.Characters.Single(x => x.Name == "Alden").Name);
     }

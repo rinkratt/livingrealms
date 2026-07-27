@@ -95,6 +95,7 @@ if (!app.Environment.IsEnvironment("Testing"))
             var population = populationScope.ServiceProvider.GetRequiredService<WorldPopulationService>();
             await population.EnsureStonehavenResidentsAsync();
             await population.EnsureDarkwoodClanMembersAsync();
+            await population.EnsureHuntableWildlifeAsync();
             Program.LogWorldPopulationMaterialized(app.Logger);
         }
         catch (Exception exception)

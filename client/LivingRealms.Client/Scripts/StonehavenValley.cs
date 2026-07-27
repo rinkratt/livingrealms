@@ -1553,6 +1553,8 @@ public partial class StonehavenValley : Node3D
         var darkwoodRaid = state.EventReadiness.DarkwoodRaid;
         var counterattack = state.EventReadiness.StonehavenCounterattack;
         var structureSummary = FormatStructureSummary(state.Structures);
+        var stonehavenFood = FormatFoodEconomy("STONEHAVEN", state.Survival.Stonehaven);
+        var darkwoodFood = FormatFoodEconomy("DARKWOOD", state.Survival.Darkwood);
         var adminJobs = state.CanAccelerate
             ? $"\n\nADMIN SIMULATION JOBS\n{state.Events.Pending} pending   •   {state.Events.Completed} completed   •   {state.Events.Failed} failed"
             : string.Empty;
@@ -1569,6 +1571,8 @@ public partial class StonehavenValley : Node3D
             $"MEMORY   {state.Settlement.Leader.MemorySummary}\n" +
             $"Population: {state.Settlement.LivingResidents}/{state.Settlement.HousingCapacity} housed named residents   •   combat-ready {state.Settlement.CombatReadyResidents}   •   defense rating {state.Settlement.DefenseRating}   •   military power {state.Settlement.GuardStrength}\n" +
             $"Village supplies: food {state.Settlement.Food}   •   wood {state.Settlement.Wood}   •   stone {state.Settlement.Stone}   •   iron {state.Settlement.Iron}\n" +
+            $"\nSURVIVAL & WORKERS\n{stonehavenFood}\n{darkwoodFood}\n" +
+            $"Huntable wildlife: {state.Survival.Wildlife.Available}/{state.Survival.Wildlife.Total} active   •   {state.Survival.Wildlife.Respawning} respawning\n\n" +
             $"Destructible settlement assets:\n{structureSummary}\n" +
             $"Growth: at most one new resident per world day, only when housing and the required food, timber, stone, and iron are available.\n\n" +
             "CAMPAIGN READINESS\nBattles become ready from living-world conditions, but only an online administrator can authorize their start." +
@@ -1588,6 +1592,21 @@ public partial class StonehavenValley : Node3D
         _resetWorldButton.Text = "Reset Living World  [Playtest]";
         _resetConfirmationSeconds = 0;
         ApplyDarkwoodCampStage(faction.DevelopmentStage);
+    }
+
+    private static string FormatFoodEconomy(string owner, WorldFoodEconomyData economy)
+    {
+        var net = economy.NetFoodPerHour >= 0
+            ? $"+{economy.NetFoodPerHour}"
+            : economy.NetFoodPerHour.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var recruitment = economy.RecommendedRecruitmentRole == "None"
+            ? "food workforce currently sustainable"
+            : $"next needed worker: {economy.RecommendedRecruitmentRole}";
+        return
+            $"{owner}: {economy.Population} mouths consume {economy.FoodConsumedPerHour}/hour   •   " +
+            $"{economy.FoodProducedPerHour}/hour produced ({economy.Farmers} farmers, {economy.Fishers} fishers, {economy.Hunters} hunters)   •   net {net}/hour\n" +
+            $"Stores {economy.FoodStored}   •   about {economy.HoursOfFoodRemaining} full hours banked   •   {recruitment}" +
+            (economy.IsShortage ? "   •   FOOD SHORTAGE" : string.Empty);
     }
 
     private static void SetReadinessLabel(Label label, WorldTriggerReadinessData readiness)
@@ -2303,9 +2322,9 @@ public partial class StonehavenValley : Node3D
             new WorldLeaderData("Gorvak", "Goblin Chief", 8, 10, 180, 180, 22, 14, "Alive")),
         new WorldSettlementData(
             "Stonehaven Village",
-            8,
-            8,
-            4,
+            11,
+            11,
+            3,
             24,
             64,
             40,
@@ -2325,6 +2344,10 @@ public partial class StonehavenValley : Node3D
                 "Pragmatic",
                 true,
                 "Aldric keeps Stonehaven's stores, work assignments, and defenses accountable.")),
+        new WorldSurvivalData(
+            new WorldFoodEconomyData(11, 64, 2, 1, 0, 10, 3, 0, 13, 11, 2, false, 5, "None"),
+            new WorldFoodEconomyData(7, 80, 0, 0, 1, 0, 0, 10, 10, 7, 3, false, 11, "None"),
+            new WorldWildlifeData(15, 15, 0)),
         [
             new DestructibleStructureData(
                 Guid.Parse("83000000-0000-4000-8000-000000000001"),
@@ -2370,7 +2393,7 @@ public partial class StonehavenValley : Node3D
                 "A raid launches when Darkwood has 15 living raid-ready goblins; its current leader remains at the camp and is not counted."),
             new WorldTriggerReadinessData(
                 "Stonehaven counterattack on Darkwood",
-                8,
+                11,
                 20,
                 false,
                 false,
@@ -5356,6 +5379,7 @@ public sealed record WorldStateData(
     bool CanAccelerate,
     WorldFactionData Faction,
     WorldSettlementData Settlement,
+    WorldSurvivalData Survival,
     IReadOnlyCollection<DestructibleStructureData> Structures,
     WorldEventReadinessData EventReadiness,
     WorldEventQueueData Events,
@@ -5413,6 +5437,26 @@ public sealed record WorldSettlementLeaderData(
     string Trait,
     bool IsMajor,
     string MemorySummary);
+public sealed record WorldSurvivalData(
+    WorldFoodEconomyData Stonehaven,
+    WorldFoodEconomyData Darkwood,
+    WorldWildlifeData Wildlife);
+public sealed record WorldFoodEconomyData(
+    int Population,
+    int FoodStored,
+    int Farmers,
+    int Fishers,
+    int Hunters,
+    int FarmerProductionPerHour,
+    int FisherProductionPerHour,
+    int HunterProductionPerHour,
+    int FoodProducedPerHour,
+    int FoodConsumedPerHour,
+    int NetFoodPerHour,
+    bool IsShortage,
+    int HoursOfFoodRemaining,
+    string RecommendedRecruitmentRole);
+public sealed record WorldWildlifeData(int Total, int Available, int Respawning);
 public sealed record WorldEventReadinessData(
     WorldTriggerReadinessData DarkwoodRaid,
     WorldTriggerReadinessData StonehavenCounterattack);

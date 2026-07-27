@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using LivingRealms.Infrastructure.Persistence;
+using LivingRealms.Infrastructure.Simulation;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -46,9 +47,9 @@ public sealed class PhaseSevenEndpointTests : IClassFixture<PhaseTwoWebApplicati
             JsonOptions);
 
         Assert.NotNull(residents);
-        Assert.Equal(9, residents.Length);
-        Assert.Equal(9, residents.Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
-        Assert.Equal(8, residents.Count(x => x.Status == "Active"));
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation + 1, residents.Length);
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation + 1, residents.Select(x => x.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation, residents.Count(x => x.Status == "Active"));
         Assert.Contains(residents, x => x.Name == "Mara Venn" && x.Status == "Missing");
         Assert.Contains(residents, x =>
             x.Name == "Reeve Aldric Vale" &&
@@ -61,6 +62,9 @@ public sealed class PhaseSevenEndpointTests : IClassFixture<PhaseTwoWebApplicati
         Assert.Contains(residents, x => x.Name == "Elowen" && x.Role == "Healer" && !x.CanFight);
         Assert.Contains(residents, x => x.Name == "Nessa" && x.Role == "Lumberjack" && !x.CanFight);
         Assert.Contains(residents, x => x.Name == "Dain" && x.Role == "Quarry Worker" && !x.CanFight);
+        Assert.Contains(residents, x => x.Name == "Aveline Hart" && x.Role == "Farmer" && !x.CanFight);
+        Assert.Contains(residents, x => x.Name == "Cedric Vale" && x.Role == "Farmer" && !x.CanFight);
+        Assert.Contains(residents, x => x.Name == "Ysabel Reed" && x.Role == "Fisher" && !x.CanFight);
         Assert.All(residents.Where(x => x.Status == "Active"), resident =>
         {
             Assert.Equal("Active", resident.Status);

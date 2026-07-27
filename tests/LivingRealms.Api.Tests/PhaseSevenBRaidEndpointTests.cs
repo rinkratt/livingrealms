@@ -330,7 +330,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         var settlement = await database.Settlements.SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
         Assert.Equal(0, settlement.StructuralIntegrity);
         Assert.True(settlement.IsDestroyed);
-        Assert.Equal(4, settlement.Population);
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation - raid.ResidentCasualties, settlement.Population);
         var residents = await database.SettlementResidents.ToListAsync();
         Assert.All(
             residents.Where(x => x.CanFight && x.Name != "Mara Venn"),
@@ -438,12 +438,14 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             .Include(x => x.Residents)
             .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
         Assert.Equal(1000, settlement.StructuralIntegrity);
-        Assert.Equal(8, settlement.Population);
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation, settlement.Population);
         Assert.Equal(WorldPopulationService.StartingStonehavenFood, settlement.Food);
         Assert.Equal(WorldPopulationService.StartingStonehavenWood, settlement.Wood);
         Assert.Equal(WorldPopulationService.StartingStonehavenStone, settlement.Stone);
         Assert.Equal(WorldPopulationService.StartingStonehavenIron, settlement.Iron);
-        Assert.Equal(8, settlement.Residents.Count(x => x.Status == ResidentStatus.Active));
+        Assert.Equal(
+            WorldPopulationService.StartingStonehavenPopulation,
+            settlement.Residents.Count(x => x.Status == ResidentStatus.Active));
         Assert.Single(settlement.Residents, x => x.Status == ResidentStatus.Missing);
         Assert.All(settlement.Residents.Where(x => x.Status == ResidentStatus.Active), x =>
         {
@@ -513,6 +515,19 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         {
             var database = waitingScope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
             Assert.Empty(await database.StonehavenAssaults.ToListAsync());
+            var factionState = await database.Factions
+                .Where(x => x.Id == LivingRealmsDbContext.DarkwoodClanId)
+                .Select(x => new { x.DevelopmentStage, x.Population, x.SimulatedHours })
+                .SingleAsync();
+            Assert.Equal(15, factionState.Population);
+            Assert.Equal(96, factionState.SimulatedHours);
+            Assert.Equal(3, factionState.DevelopmentStage);
+            Assert.True(
+                await database.SettlementResidents.CountAsync(x =>
+                    x.SettlementId == LivingRealmsDbContext.StonehavenVillageId &&
+                    x.Health > 0 &&
+                    (x.Status == ResidentStatus.Active || x.Status == ResidentStatus.Injured)) >=
+                WorldPopulationService.StonehavenAssaultSoldiersRequired);
         }
         Assert.Equal(
             HttpStatusCode.OK,

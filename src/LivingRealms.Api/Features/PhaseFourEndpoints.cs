@@ -41,6 +41,7 @@ public static class PhaseFourEndpoints
         }
 
         await population.EnsureDarkwoodClanMembersAsync(cancellationToken: context.RequestAborted);
+        await population.EnsureHuntableWildlifeAsync(cancellationToken: context.RequestAborted);
         await RespawnReadyCreaturesAsync(database, context.RequestAborted);
         var creatures = await database.Creatures
             .AsNoTracking()

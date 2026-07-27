@@ -6,7 +6,7 @@ namespace LivingRealms.Infrastructure.Simulation;
 
 public sealed class WorldPopulationService(LivingRealmsDbContext database)
 {
-    public const int StartingStonehavenPopulation = 8;
+    public const int StartingStonehavenPopulation = 11;
     public const int StartingDarkwoodPopulation = 7;
     public const int StonehavenFarmPlotCount = 8;
     public const int StonehavenFarmhouseCount = 2;
@@ -39,8 +39,7 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
 
     private static readonly string[] StonehavenArrivalRoleCycle =
     [
-        "Miner", "Fisher", "Farmer", "Farmer", "Stonehaven Guard",
-        "Carpenter", "Carpenter", "Mason", "Mason", "Hunter", "Hunter", "Weaver", "Weaver",
+        "Stonehaven Guard", "Carpenter", "Mason", "Hunter", "Weaver",
         "Baker", "Fisher", "Tanner", "Brewer", "Stablehand", "Herbalist", "Scribe", "Potter"
     ];
 
@@ -66,6 +65,20 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         (-10, 11), (11, -10), (-2, 11), (8, 12), (-12, 8), (12, -7), (-8, -12), (2, -14)
     ];
 
+    private static readonly WildlifeSpec[] HuntingWildlife =
+    [
+        new("75000000-0000-4000-8000-000000000001", "Fernfoot", false, -38, 91),
+        new("75000000-0000-4000-8000-000000000002", "Barleytail", false, 34, 112),
+        new("75000000-0000-4000-8000-000000000003", "Reedwhisker", false, 67, 27),
+        new("75000000-0000-4000-8000-000000000004", "Mossnose", false, -83, 24),
+        new("75000000-0000-4000-8000-000000000005", "Flinttail", false, -91, -31),
+        new("75000000-0000-4000-8000-000000000006", "Greybriar", true, -26, 124),
+        new("75000000-0000-4000-8000-000000000007", "Riverfang", true, 71, 14),
+        new("75000000-0000-4000-8000-000000000008", "Northwind", true, -104, 74),
+        new("75000000-0000-4000-8000-000000000009", "Ashpelt", true, -72, -42),
+        new("75000000-0000-4000-8000-000000000010", "Duskrunner", true, -86, -79)
+    ];
+
     public async Task EnsureStonehavenResidentsAsync(
         bool saveChanges = true,
         CancellationToken cancellationToken = default)
@@ -79,6 +92,13 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             x.Health > 0 && x.Status is ResidentStatus.Active or ResidentStatus.Injured);
         var knownNames = existing.Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var needed = Math.Max(0, settlement.Population - livingCount);
+        var availableWildlife = await database.Creatures.CountAsync(
+            x => x.FactionId == null &&
+                 x.Status == CreatureStatus.Alive &&
+                 x.Health > 0 &&
+                 (x.SpeciesId == LivingRealmsDbContext.ForestRatSpeciesId ||
+                  x.SpeciesId == LivingRealmsDbContext.PrairieWolfSpeciesId),
+            cancellationToken);
 
         // Legacy placeholder residents remain in the Chronicle, but population
         // growth reintroduces them in the intentional arrival order. Mara Venn is a
@@ -98,7 +118,7 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             ConfigureStonehavenArrival(
                 returning,
                 residentIndex >= 0 ? residentIndex : StartingStonehavenPopulation + arrivalNumber,
-                StonehavenArrivalRoleCycle[arrivalNumber % StonehavenArrivalRoleCycle.Length]);
+                ResolveStonehavenArrivalRole(existing, availableWildlife, arrivalNumber));
             arrivalNumber++;
             needed--;
         }
@@ -111,10 +131,12 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
                 continue;
             }
 
-            database.SettlementResidents.Add(CreateStonehavenResident(
+            var resident = CreateStonehavenResident(
                 index,
                 name,
-                StonehavenArrivalRoleCycle[arrivalNumber % StonehavenArrivalRoleCycle.Length]));
+                ResolveStonehavenArrivalRole(existing, availableWildlife, arrivalNumber));
+            database.SettlementResidents.Add(resident);
+            existing.Add(resident);
             arrivalNumber++;
             needed--;
         }
@@ -151,6 +173,13 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             .SingleAsync(x => x.Id == LivingRealmsDbContext.GoblinRaiderSpeciesId, cancellationToken);
         var knownNames = allMembers.Select(x => x.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var createdAt = DateTimeOffset.UtcNow;
+        var availableWildlife = await database.Creatures.CountAsync(
+            x => x.FactionId == null &&
+                 x.Status == CreatureStatus.Alive &&
+                 x.Health > 0 &&
+                 (x.SpeciesId == LivingRealmsDbContext.ForestRatSpeciesId ||
+                  x.SpeciesId == LivingRealmsDbContext.PrairieWolfSpeciesId),
+            cancellationToken);
         var candidateIndex = 0;
         while (candidateIndex < DarkwoodNames.Length * 100 && needed > 0)
         {
@@ -170,15 +199,21 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             var post = DarkwoodCampPosts[index % DarkwoodCampPosts.Length];
             var level = Math.Max(3, 3 + faction.DevelopmentStage + index % 3);
             var maximumHealth = species.BaseHealth + Math.Max(0, level - 5) * 9;
-            var role = (index % 6) switch
+            var role = WorldSurvivalService.ResolveDarkwoodRecruitmentRole(
+                allMembers,
+                availableWildlife);
+            if (role == "None")
             {
-                0 => "Clan Raider",
-                1 => "Clan Hunter",
-                2 => "Woodcutter",
-                3 => "Stone Gatherer",
-                4 => "Camp Guard",
-                _ => "Scout"
-            };
+                role = (index % 6) switch
+                {
+                    0 => "Clan Raider",
+                    1 => "Woodcutter",
+                    2 => "Stone Gatherer",
+                    3 => "Camp Guard",
+                    4 => "Scout",
+                    _ => "Clan Raider"
+                };
+            }
             var creature = new Creature
             {
                 Id = generation == 0
@@ -223,6 +258,7 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
                 UpdatedAt = createdAt
             });
             database.Creatures.Add(creature);
+            allMembers.Add(creature);
             needed--;
         }
 
@@ -231,6 +267,68 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             throw new InvalidOperationException("The Darkwood member catalog cannot satisfy the faction population.");
         }
         if (saveChanges)
+        {
+            await database.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    public async Task EnsureHuntableWildlifeAsync(
+        bool saveChanges = true,
+        CancellationToken cancellationToken = default)
+    {
+        var wildlifeIds = HuntingWildlife
+            .Select(x => Guid.Parse(x.Id))
+            .ToArray();
+        var existingIdRows = await database.Creatures
+            .Where(x => x.Role == "Wildlife")
+            .Select(x => x.Id)
+            .ToArrayAsync(cancellationToken);
+        var existingIds = existingIdRows.ToHashSet();
+        if (wildlifeIds.All(existingIds.Contains))
+        {
+            return;
+        }
+
+        var species = await database.CreatureSpecies
+            .Where(x => x.Id == LivingRealmsDbContext.ForestRatSpeciesId ||
+                        x.Id == LivingRealmsDbContext.PrairieWolfSpeciesId)
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+        var createdAt = DateTimeOffset.UtcNow;
+        foreach (var spec in HuntingWildlife.Where(x => !existingIds.Contains(Guid.Parse(x.Id))))
+        {
+            var speciesId = spec.IsWolf
+                ? LivingRealmsDbContext.PrairieWolfSpeciesId
+                : LivingRealmsDbContext.ForestRatSpeciesId;
+            var creatureSpecies = species[speciesId];
+            database.Creatures.Add(new Creature
+            {
+                Id = Guid.Parse(spec.Id),
+                SpeciesId = speciesId,
+                RegionId = LivingRealmsDbContext.StonehavenValleyId,
+                Name = spec.Name,
+                Role = "Wildlife",
+                Title = spec.IsWolf ? "Wild Prairie Wolf" : "Wild Forest Rat",
+                Level = spec.IsWolf ? 3 : 1,
+                Health = creatureSpecies.BaseHealth,
+                MaximumHealth = creatureSpecies.BaseHealth,
+                Attack = creatureSpecies.BaseAttack,
+                Defense = creatureSpecies.BaseDefense,
+                MovementSpeed = creatureSpecies.BaseMovementSpeed,
+                PositionX = spec.X,
+                PositionY = 0.08f,
+                PositionZ = spec.Z,
+                SpawnX = spec.X,
+                SpawnY = 0.08f,
+                SpawnZ = spec.Z,
+                Aggression = spec.IsWolf ? 52 : 18,
+                Status = CreatureStatus.Alive,
+                LastProcessedAt = createdAt,
+                CreatedAt = createdAt,
+                UpdatedAt = createdAt
+            });
+        }
+
+        if (saveChanges && database.ChangeTracker.HasChanges())
         {
             await database.SaveChangesAsync(cancellationToken);
         }
@@ -316,6 +414,19 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         resident.WorkZ = work.Z;
         resident.Dialogue = DialogueFor(role);
         resident.UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    private static string ResolveStonehavenArrivalRole(
+        IReadOnlyCollection<SettlementResident> residents,
+        int availableWildlife,
+        int arrivalNumber)
+    {
+        var recommended = WorldSurvivalService.ResolveStonehavenRecruitmentRole(
+            residents,
+            availableWildlife);
+        return recommended == "None"
+            ? StonehavenArrivalRoleCycle[arrivalNumber % StonehavenArrivalRoleCycle.Length]
+            : recommended;
     }
 
     private static (float X, float Z) ResolveStonehavenWorkPosition(int index, string role) => role switch
@@ -406,4 +517,11 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         ];
         return traits[Math.Abs(index) % traits.Length];
     }
+
+    private sealed record WildlifeSpec(
+        string Id,
+        string Name,
+        bool IsWolf,
+        float X,
+        float Z);
 }

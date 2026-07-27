@@ -199,7 +199,10 @@ public sealed partial class WorldSimulationService(
                 LivingRealmsDbContext.ElowenResidentId,
                 LivingRealmsDbContext.OrenResidentId,
                 LivingRealmsDbContext.NessaResidentId,
-                LivingRealmsDbContext.DainResidentId
+                LivingRealmsDbContext.DainResidentId,
+                LivingRealmsDbContext.AvelineResidentId,
+                LivingRealmsDbContext.CedricResidentId,
+                LivingRealmsDbContext.YsabelResidentId
             };
             var laterResidents = settlement.Residents
                 .Where(x => !originalStonehavenIds.Contains(x.Id))
@@ -492,6 +495,9 @@ public sealed partial class WorldSimulationService(
 
     private async Task ApplyProgressionAsync(ProgressionPayload payload, CancellationToken cancellationToken)
     {
+        await population.EnsureHuntableWildlifeAsync(cancellationToken: cancellationToken);
+        await population.EnsureStonehavenResidentsAsync(cancellationToken: cancellationToken);
+        await population.EnsureDarkwoodClanMembersAsync(cancellationToken: cancellationToken);
         var faction = await database.Factions
             .Include(x => x.Resources)
             .Include(x => x.Structures)
@@ -515,17 +521,41 @@ public sealed partial class WorldSimulationService(
         var woodBefore = resources[ResourceKind.Wood].Amount;
         var stoneBefore = resources[ResourceKind.Stone].Amount;
         var ironBefore = resources[ResourceKind.Iron].Amount;
+        var stonehavenFoodBefore = settlement.Food;
         var populationBefore = faction.Population;
         var stonehavenPopulationBefore = settlement.Population;
         var stageBefore = faction.DevelopmentStage;
         var titleBefore = leader.Title;
         var simulatedHoursBefore = faction.SimulatedHours;
+        var availableWildlife = creatures.Count(x =>
+            WorldSurvivalService.IsHuntableWildlife(x) &&
+            WorldSurvivalService.IsLiving(x));
+        var stonehavenFoodEconomy = WorldSurvivalService.CalculateStonehaven(
+            activeStonehavenResidents,
+            settlement.Food,
+            availableWildlife);
+        var darkwoodFoodEconomy = WorldSurvivalService.CalculateDarkwood(
+            creatures.Where(x => x.FactionId == faction.Id),
+            resources[ResourceKind.Food].Amount,
+            availableWildlife);
 
-        AddResource(resources[ResourceKind.Food], (long)faction.Population * payload.WorldHours);
+        AddResource(
+            resources[ResourceKind.Food],
+            (long)darkwoodFoodEconomy.NetFoodPerHour * payload.WorldHours);
         AddResource(resources[ResourceKind.Wood], 5L * payload.WorldHours);
         AddResource(resources[ResourceKind.Stone], 2L * payload.WorldHours);
         AddResource(resources[ResourceKind.Iron], payload.WorldHours);
         AddResource(resources[ResourceKind.Gold], payload.WorldHours / 8L);
+        settlement.Food = Math.Max(
+            0,
+            settlement.Food + stonehavenFoodEconomy.NetFoodPerHour * payload.WorldHours);
+        if (darkwoodFoodEconomy.NetFoodPerHour < 0 &&
+            resources[ResourceKind.Food].Amount == 0)
+        {
+            faction.Morale = Math.Max(
+                0,
+                faction.Morale - Math.Min(12, payload.WorldHours));
+        }
 
         faction.SimulatedHours += payload.WorldHours;
         var previousGrowthCycles = simulatedHoursBefore / 12;
@@ -542,16 +572,9 @@ public sealed partial class WorldSimulationService(
             resources[ResourceKind.Food].Amount -= 15;
         }
 
-        var farmers = activeStonehavenResidents.Count(x => x.Role == "Farmer");
-        var huntersAndFishers = activeStonehavenResidents.Count(x => x.Role is "Hunter" or "Fisher");
         var lumberjacks = activeStonehavenResidents.Count(x => x.Role == "Lumberjack");
         var quarryWorkers = activeStonehavenResidents.Count(x => x.Role is "Quarry Worker" or "Mason");
         var ironWorkers = activeStonehavenResidents.Count(x => x.Role is "Quarry Worker" or "Blacksmith");
-        var foodProducedPerHour = WorldPopulationService.StonehavenFarmPlotCount / 2 +
-                                  farmers * 2 + huntersAndFishers;
-        var foodConsumedPerHour = Math.Max(1, (settlement.Population + 3) / 4);
-        settlement.Food = Math.Max(0,
-            settlement.Food + (foodProducedPerHour - foodConsumedPerHour) * payload.WorldHours);
         settlement.Wood = Math.Min(700,
             settlement.Wood + Math.Max(0, lumberjacks) * payload.WorldHours);
         settlement.Stone = Math.Min(700,
@@ -599,7 +622,6 @@ public sealed partial class WorldSimulationService(
         {
             await population.EnsureStonehavenResidentsAsync(saveChanges: false, cancellationToken);
         }
-
         var constructionProjects = await database.ConstructionProjects
             .Where(x => x.Id == LivingRealmsDbContext.StonehavenWallProjectId ||
                         x.Id == LivingRealmsDbContext.DarkwoodPalisadeProjectId)
@@ -711,6 +733,13 @@ public sealed partial class WorldSimulationService(
             creature.UpdatedAt = payload.ProcessedAt;
         }
 
+        var hunting = AdvanceHunting(
+            simulatedHoursBefore,
+            faction.SimulatedHours,
+            payload.ProcessedAt,
+            activeStonehavenResidents,
+            creatures);
+
         database.WorldHistory.Add(new WorldHistory
         {
             EventType = "faction_progressed",
@@ -724,6 +753,29 @@ public sealed partial class WorldSimulationService(
             CreatedAt = payload.ProcessedAt,
             UpdatedAt = payload.ProcessedAt
         });
+
+        AddHistory(
+            "survival_cycle",
+            "Every living household drew from the food stores",
+            $"Stonehaven's {stonehavenFoodEconomy.Population} living residents consumed {stonehavenFoodEconomy.FoodConsumedPerHour} food per hour while its farmers, fisher, and hunters produced {stonehavenFoodEconomy.FoodProducedPerHour}; food changed from {stonehavenFoodBefore} to {settlement.Food}. " +
+            $"Darkwood's {darkwoodFoodEconomy.Population} living goblins consumed {darkwoodFoodEconomy.FoodConsumedPerHour} per hour while its hunters produced {darkwoodFoodEconomy.FoodProducedPerHour}; food changed from {foodBefore} to {resources[ResourceKind.Food].Amount}.",
+            stonehavenFoodEconomy.IsShortage || darkwoodFoodEconomy.IsShortage ? 3 : 1,
+            faction,
+            leader,
+            payload.ProcessedAt);
+
+        if (hunting.Skirmishes > 0)
+        {
+            AddHistory(
+                "hunting_skirmish",
+                "Stonehaven and Darkwood hunters fought over the same trail",
+                $"{hunting.StonehavenHunter} and {hunting.DarkwoodHunter} met while pursuing valley wildlife. " +
+                $"{hunting.Skirmishes} territorial skirmish(es) left both hunting parties injured, and their persistent positions now mark the contested hunting ground.",
+                3,
+                faction,
+                leader,
+                payload.ProcessedAt);
+        }
 
         if (faction.Population > populationBefore)
         {
@@ -792,6 +844,110 @@ public sealed partial class WorldSimulationService(
             payload.WorldHours,
             payload.ProcessedAt,
             cancellationToken);
+    }
+
+    private static HuntingRunResult AdvanceHunting(
+        long simulatedHoursBefore,
+        long simulatedHoursAfter,
+        DateTimeOffset processedAt,
+        IReadOnlyCollection<SettlementResident> residents,
+        IReadOnlyCollection<Creature> creatures)
+    {
+        var cycles = simulatedHoursAfter / 6 > simulatedHoursBefore / 6 ? 1 : 0;
+        if (cycles <= 0)
+        {
+            return HuntingRunResult.None;
+        }
+
+        var stonehavenHunters = residents
+            .Where(x => WorldSurvivalService.IsLiving(x) &&
+                        x.Role.Equals("Hunter", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x.Id)
+            .ToArray();
+        var darkwoodHunters = creatures
+            .Where(x => WorldSurvivalService.IsLiving(x) &&
+                        x.FactionId == LivingRealmsDbContext.DarkwoodClanId &&
+                        x.Role?.Equals("Clan Hunter", StringComparison.OrdinalIgnoreCase) == true)
+            .OrderBy(x => x.Id)
+            .ToArray();
+        var wildlife = creatures
+            .Where(x => WorldSurvivalService.IsHuntableWildlife(x) &&
+                        WorldSurvivalService.IsLiving(x))
+            .OrderBy(x => x.Id)
+            .ToList();
+        var skirmishes = 0;
+        var hunted = 0;
+        SettlementResident? lastStonehavenHunter = null;
+        Creature? lastDarkwoodHunter = null;
+
+        for (var cycle = 0; cycle < cycles && wildlife.Count > 0; cycle++)
+        {
+            Creature? stonehavenTarget = null;
+            Creature? darkwoodTarget = null;
+            if (stonehavenHunters.Length > 0 && wildlife.Count > 0)
+            {
+                lastStonehavenHunter = stonehavenHunters[cycle % stonehavenHunters.Length];
+                stonehavenTarget = wildlife[0];
+                wildlife.RemoveAt(0);
+                MoveHunter(lastStonehavenHunter, stonehavenTarget);
+                MarkHunted(stonehavenTarget, processedAt, cycle);
+                hunted++;
+            }
+            if (darkwoodHunters.Length > 0 && wildlife.Count > 0)
+            {
+                lastDarkwoodHunter = darkwoodHunters[cycle % darkwoodHunters.Length];
+                darkwoodTarget = wildlife[0];
+                wildlife.RemoveAt(0);
+                MoveHunter(lastDarkwoodHunter, darkwoodTarget);
+                MarkHunted(darkwoodTarget, processedAt, cycle);
+                hunted++;
+            }
+
+            if (lastStonehavenHunter is null ||
+                lastDarkwoodHunter is null ||
+                stonehavenTarget is null ||
+                darkwoodTarget is null)
+            {
+                continue;
+            }
+
+            lastStonehavenHunter.Health = Math.Max(1, lastStonehavenHunter.Health - 6);
+            lastStonehavenHunter.Status = ResidentStatus.Injured;
+            lastStonehavenHunter.UpdatedAt = processedAt;
+            lastDarkwoodHunter.Health = Math.Max(1, lastDarkwoodHunter.Health - 6);
+            lastDarkwoodHunter.LastAttackAt = processedAt;
+            lastDarkwoodHunter.UpdatedAt = processedAt;
+            skirmishes++;
+        }
+
+        return new HuntingRunResult(
+            hunted,
+            skirmishes,
+            lastStonehavenHunter?.Name,
+            lastDarkwoodHunter?.Name);
+    }
+
+    private static void MoveHunter(SettlementResident hunter, Creature target)
+    {
+        hunter.WorkX = target.PositionX + 1.5f;
+        hunter.WorkY = 0.08f;
+        hunter.WorkZ = target.PositionZ + 1.5f;
+    }
+
+    private static void MoveHunter(Creature hunter, Creature target)
+    {
+        hunter.PositionX = target.PositionX - 1.5f;
+        hunter.PositionY = 0.08f;
+        hunter.PositionZ = target.PositionZ - 1.5f;
+    }
+
+    private static void MarkHunted(Creature wildlife, DateTimeOffset processedAt, int cycle)
+    {
+        wildlife.Health = 0;
+        wildlife.Status = CreatureStatus.Dead;
+        wildlife.RespawnAt = processedAt.AddMinutes(30 + cycle * 5);
+        wildlife.LastAttackAt = processedAt;
+        wildlife.UpdatedAt = processedAt;
     }
 
     private void AdvanceSettlementConstruction(
@@ -1125,6 +1281,15 @@ public sealed partial class WorldSimulationService(
         Level = LogLevel.Warning,
         Message = "Development world simulation reset at {CentralTime}")]
     private static partial void LogWorldReset(ILogger logger, DateTimeOffset centralTime);
+
+    private sealed record HuntingRunResult(
+        int WildlifeHunted,
+        int Skirmishes,
+        string? StonehavenHunter,
+        string? DarkwoodHunter)
+    {
+        public static HuntingRunResult None { get; } = new(0, 0, null, null);
+    }
 
     private sealed record ProgressionPayload(int WorldHours, DateTimeOffset ProcessedAt, string Source);
 }

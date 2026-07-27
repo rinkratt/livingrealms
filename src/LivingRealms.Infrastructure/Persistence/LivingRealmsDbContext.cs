@@ -23,6 +23,9 @@ public sealed class LivingRealmsDbContext(DbContextOptions<LivingRealmsDbContext
     public static readonly Guid OrenResidentId = Guid.Parse("70000000-0000-4000-8000-000000000007");
     public static readonly Guid NessaResidentId = Guid.Parse("70000000-0000-4000-8000-000000000008");
     public static readonly Guid DainResidentId = Guid.Parse("70000000-0000-4000-8000-000000000009");
+    public static readonly Guid AvelineResidentId = Guid.Parse("73000000-0000-4000-8000-000000000001");
+    public static readonly Guid CedricResidentId = Guid.Parse("73000000-0000-4000-8000-000000000002");
+    public static readonly Guid YsabelResidentId = Guid.Parse("73000000-0000-4000-8000-000000000003");
     public static readonly Guid StonehavenWallProjectId = Guid.Parse("81000000-0000-4000-8000-000000000001");
     public static readonly Guid DarkwoodPalisadeProjectId = Guid.Parse("81000000-0000-4000-8000-000000000002");
     public static readonly Guid StonehavenLumberYardProjectId = Guid.Parse("81000000-0000-4000-8000-000000000003");

@@ -1749,6 +1749,13 @@ public partial class Main : Control
                 state.Settlement.Leader.Trait,
                 state.Settlement.Leader.IsMajor,
                 state.Settlement.Leader.MemorySummary)),
+        new WorldSurvivalData(
+            ToFoodEconomy(state.Survival.Stonehaven),
+            ToFoodEconomy(state.Survival.Darkwood),
+            new WorldWildlifeData(
+                state.Survival.Wildlife.Total,
+                state.Survival.Wildlife.Available,
+                state.Survival.Wildlife.Respawning)),
         state.Structures.Select(ToDestructibleStructure).ToArray(),
         new WorldEventReadinessData(
             new WorldTriggerReadinessData(
@@ -1770,6 +1777,22 @@ public partial class Main : Control
         new WorldEventQueueData(state.Events.Pending, state.Events.Completed, state.Events.Failed),
         state.RecentHistory.Select(entry =>
             new WorldHistoryData(entry.Title, entry.Description, entry.OccurredAtCentral)).ToArray());
+
+    private static WorldFoodEconomyData ToFoodEconomy(WorldFoodEconomyResponse economy) => new(
+        economy.Population,
+        economy.FoodStored,
+        economy.Farmers,
+        economy.Fishers,
+        economy.Hunters,
+        economy.FarmerProductionPerHour,
+        economy.FisherProductionPerHour,
+        economy.HunterProductionPerHour,
+        economy.FoodProducedPerHour,
+        economy.FoodConsumedPerHour,
+        economy.NetFoodPerHour,
+        economy.IsShortage,
+        economy.HoursOfFoodRemaining,
+        economy.RecommendedRecruitmentRole);
 
     private static DevelopmentStateData ToDevelopmentState(DevelopmentStateResponse state) => new(
         state.Nodes.Select(node => new ResourceNodeData(
@@ -2421,6 +2444,7 @@ public partial class Main : Control
         public bool CanAccelerate { get; init; }
         public WorldFactionResponse Faction { get; init; } = new();
         public WorldSettlementResponse Settlement { get; init; } = new();
+        public WorldSurvivalResponse Survival { get; init; } = new();
         public DestructibleStructureResponse[] Structures { get; init; } = [];
         public WorldEventReadinessResponse EventReadiness { get; init; } = new();
         public WorldEventQueueResponse Events { get; init; } = new();
@@ -2519,6 +2543,38 @@ public partial class Main : Control
         public string Trait { get; init; } = string.Empty;
         public bool IsMajor { get; init; }
         public string MemorySummary { get; init; } = string.Empty;
+    }
+
+    private sealed class WorldSurvivalResponse
+    {
+        public WorldFoodEconomyResponse Stonehaven { get; init; } = new();
+        public WorldFoodEconomyResponse Darkwood { get; init; } = new();
+        public WorldWildlifeResponse Wildlife { get; init; } = new();
+    }
+
+    private sealed class WorldFoodEconomyResponse
+    {
+        public int Population { get; init; }
+        public int FoodStored { get; init; }
+        public int Farmers { get; init; }
+        public int Fishers { get; init; }
+        public int Hunters { get; init; }
+        public int FarmerProductionPerHour { get; init; }
+        public int FisherProductionPerHour { get; init; }
+        public int HunterProductionPerHour { get; init; }
+        public int FoodProducedPerHour { get; init; }
+        public int FoodConsumedPerHour { get; init; }
+        public int NetFoodPerHour { get; init; }
+        public bool IsShortage { get; init; }
+        public int HoursOfFoodRemaining { get; init; }
+        public string RecommendedRecruitmentRole { get; init; } = string.Empty;
+    }
+
+    private sealed class WorldWildlifeResponse
+    {
+        public int Total { get; init; }
+        public int Available { get; init; }
+        public int Respawning { get; init; }
     }
 
     private sealed class WorldEventReadinessResponse

@@ -29,7 +29,7 @@ work.
 - Both forces fight to a persistent resolution rather than disappearing on a
   timer.
 
-## Phase 4: survival and workers
+## Phase 4: survival and workers — complete in 0.9.14
 
 - Stonehaven starts with two farmers and one fisherman among its founding
   residents.

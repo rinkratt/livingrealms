@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.13
+LIVING REALMS WINDOWS PLAYTEST 0.9.14
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,19 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.14
+- Starts Stonehaven with two named farmers and one named fisherman among its
+  eleven founding residents.
+- Makes every living Stonehaven resident and Darkwood goblin consume food.
+- Makes farmers, fishermen, and hunters produce real food each world hour.
+- Recruits workers to correct food shortages while respecting settlement
+  population, food, housing, and recruitment costs.
+- Adds ten persistent huntable rats and wolves outside the training yard.
+- Sends named Stonehaven and Darkwood hunters after wildlife and records
+  territorial hunting clashes when both factions compete.
+- Shows food production, consumption, worker counts, shortages, reserves,
+  recruitment needs, and wildlife status on the Journey page.
 
 BUILD 0.9.13
 - Uses one authoritative build identity for the login header and updater.

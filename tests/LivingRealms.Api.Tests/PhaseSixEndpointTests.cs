@@ -42,8 +42,8 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal("Goblin Chief", initial.Faction.Leader.Title);
         Assert.Equal(5, initial.Faction.Resources.Count);
         Assert.Equal("Stonehaven Village", initial.Settlement.Name);
-        Assert.Equal(8, initial.Settlement.Population);
-        Assert.Equal(8, initial.Settlement.LivingResidents);
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation, initial.Settlement.Population);
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation, initial.Settlement.LivingResidents);
         Assert.Equal(24, initial.Settlement.HousingCapacity);
         Assert.Equal(64, initial.Settlement.Food);
         Assert.Equal(40, initial.Settlement.Wood);
@@ -51,10 +51,19 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal(4, initial.Settlement.Iron);
         Assert.Equal("Reeve Aldric Vale", initial.Settlement.Leader.Name);
         Assert.Equal("Reeve of Stonehaven", initial.Settlement.Leader.Title);
+        Assert.Equal(2, initial.Survival.Stonehaven.Farmers);
+        Assert.Equal(1, initial.Survival.Stonehaven.Fishers);
+        Assert.Equal(13, initial.Survival.Stonehaven.FoodProducedPerHour);
+        Assert.Equal(11, initial.Survival.Stonehaven.FoodConsumedPerHour);
+        Assert.Equal(2, initial.Survival.Stonehaven.NetFoodPerHour);
+        Assert.Equal(1, initial.Survival.Darkwood.Hunters);
+        Assert.Equal(10, initial.Survival.Darkwood.FoodProducedPerHour);
+        Assert.Equal(15, initial.Survival.Wildlife.Total);
+        Assert.Equal(15, initial.Survival.Wildlife.Available);
         Assert.Equal(6, initial.EventReadiness.DarkwoodRaid.Current);
         Assert.Equal(15, initial.EventReadiness.DarkwoodRaid.Required);
         Assert.False(initial.EventReadiness.DarkwoodRaid.Ready);
-        Assert.Equal(8, initial.EventReadiness.StonehavenCounterattack.Current);
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation, initial.EventReadiness.StonehavenCounterattack.Current);
         Assert.Equal(20, initial.EventReadiness.StonehavenCounterattack.Required);
         Assert.False(initial.EventReadiness.StonehavenCounterattack.Ready);
         Assert.Contains(initial.RecentHistory, x => x.EventType == "faction_founded");
@@ -94,7 +103,14 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
                     .Where(x => x.SettlementId == LivingRealmsDbContext.StonehavenVillageId)
                     .ToListAsync(),
                 x => x.Name == "Aveline Hart" &&
-                     x.Role == "Miner" &&
+                     x.Role == "Farmer" &&
+                     x.Status == ResidentStatus.Active);
+            Assert.Contains(
+                await diagnosticDatabase.SettlementResidents
+                    .Where(x => x.SettlementId == LivingRealmsDbContext.StonehavenVillageId)
+                    .ToListAsync(),
+                x => x.Name == "Garran Holt" &&
+                     x.Role == "Hunter" &&
                      x.Status == ResidentStatus.Active);
             Assert.Contains(
                 await diagnosticDatabase.ResourceContributions.ToListAsync(),
@@ -114,11 +130,11 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal(204, advanced.World.Faction.Leader.MaximumHealth);
         Assert.Equal(25, advanced.World.Faction.Leader.Attack);
         Assert.Equal(16, advanced.World.Faction.Leader.Defense);
-        Assert.Equal(9, advanced.World.Settlement.Population);
-        Assert.Equal(9, advanced.World.Settlement.LivingResidents);
+        Assert.Equal(12, advanced.World.Settlement.Population);
+        Assert.Equal(12, advanced.World.Settlement.LivingResidents);
         Assert.Equal(80, advanced.World.Settlement.Food);
-        Assert.Equal(18, advanced.World.Settlement.Wood);
-        Assert.Equal(18, advanced.World.Settlement.Stone);
+        Assert.Equal(24, advanced.World.Settlement.Wood);
+        Assert.Equal(24, advanced.World.Settlement.Stone);
         Assert.Equal(14, advanced.World.Settlement.Iron);
         Assert.Contains(advanced.World.RecentHistory, x => x.EventType == "stonehaven_population_growth");
         Assert.Contains(advanced.World.Faction.Structures, x => x.Name == "Timber Palisade");
@@ -163,6 +179,47 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
             await database.WorldHistory.ToListAsync(),
             x => x.EventType == "faction_leadership_succession" &&
                  x.Description.Contains(gorvak.Name));
+    }
+
+    [Fact]
+    public async Task NamedHuntingPartiesContestPersistentWildlifeAfterStonehavenRecruitsAHunter()
+    {
+        using var client = _factory.CreateClient();
+        await RegisterAsync(client);
+
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.PostAsJsonAsync("/api/v1/world/advance", new AdvanceWorldRequest(24))).StatusCode);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await client.PostAsJsonAsync("/api/v1/world/advance", new AdvanceWorldRequest(6))).StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var database = scope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
+        var hunter = await database.SettlementResidents
+            .SingleAsync(x => x.Name == "Garran Holt");
+        Assert.Equal("Hunter", hunter.Role);
+        Assert.Equal(ResidentStatus.Injured, hunter.Status);
+        Assert.True(hunter.Health < hunter.MaximumHealth);
+
+        var darkwoodHunter = await database.Creatures
+            .Where(x => x.FactionId == LivingRealmsDbContext.DarkwoodClanId &&
+                        x.Role == "Clan Hunter")
+            .OrderBy(x => x.Id)
+            .FirstAsync();
+        Assert.True(darkwoodHunter.Health < darkwoodHunter.MaximumHealth);
+        Assert.Equal(
+            3,
+            await database.Creatures.CountAsync(x =>
+                x.FactionId == null &&
+                x.Status == CreatureStatus.Dead &&
+                x.RespawnAt != null &&
+                (x.SpeciesId == LivingRealmsDbContext.ForestRatSpeciesId ||
+                 x.SpeciesId == LivingRealmsDbContext.PrairieWolfSpeciesId)));
+        Assert.Contains(
+            await database.WorldHistory.ToListAsync(),
+            x => x.EventType == "hunting_skirmish" &&
+                 x.Description.Contains(hunter.Name, StringComparison.Ordinal));
     }
 
     [Fact]
@@ -243,8 +300,8 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         Assert.Equal(22, reset.Faction.Leader.Attack);
         Assert.Equal(14, reset.Faction.Leader.Defense);
         Assert.Equal(2, reset.Faction.Structures.Count);
-        Assert.Equal(8, reset.Settlement.Population);
-        Assert.Equal(8, reset.Settlement.LivingResidents);
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation, reset.Settlement.Population);
+        Assert.Equal(WorldPopulationService.StartingStonehavenPopulation, reset.Settlement.LivingResidents);
         Assert.Equal(0, reset.Events.Pending);
         Assert.Equal(0, reset.Events.Completed);
         Assert.Equal(0, reset.Events.Failed);
@@ -316,6 +373,7 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         bool CanAccelerate,
         FactionResponse Faction,
         SettlementResponse Settlement,
+        SurvivalResponse Survival,
         EventReadinessResponse EventReadiness,
         EventQueueResponse Events,
         IReadOnlyCollection<HistoryResponse> RecentHistory);
@@ -350,6 +408,23 @@ public sealed class PhaseSixEndpointTests : IClassFixture<PhaseTwoWebApplication
         int DefenseRating,
         int GuardStrength,
         SettlementLeaderResponse Leader);
+    private sealed record SurvivalResponse(
+        FoodEconomyResponse Stonehaven,
+        FoodEconomyResponse Darkwood,
+        WildlifeResponse Wildlife);
+    private sealed record FoodEconomyResponse(
+        int Population,
+        int FoodStored,
+        int Farmers,
+        int Fishers,
+        int Hunters,
+        int FoodProducedPerHour,
+        int FoodConsumedPerHour,
+        int NetFoodPerHour,
+        bool IsShortage,
+        int HoursOfFoodRemaining,
+        string RecommendedRecruitmentRole);
+    private sealed record WildlifeResponse(int Total, int Available, int Respawning);
     private sealed record SettlementLeaderResponse(
         string Name,
         string Title,

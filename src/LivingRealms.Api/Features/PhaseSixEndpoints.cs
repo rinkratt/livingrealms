@@ -145,6 +145,7 @@ public static class PhaseSixEndpoints
     {
         await population.EnsureDarkwoodClanMembersAsync(cancellationToken: cancellationToken);
         await population.EnsureStonehavenResidentsAsync(cancellationToken: cancellationToken);
+        await population.EnsureHuntableWildlifeAsync(cancellationToken: cancellationToken);
         var faction = await database.Factions.AsNoTracking()
             .Include(x => x.Resources)
             .Include(x => x.Structures)
@@ -165,6 +166,27 @@ public static class PhaseSixEndpoints
                              x.Health > 0 &&
                              (x.Status == ResidentStatus.Active || x.Status == ResidentStatus.Injured),
                 cancellationToken);
+        var stonehavenResidents = await database.SettlementResidents.AsNoTracking()
+            .Where(x => x.SettlementId == settlement.Id)
+            .ToArrayAsync(cancellationToken);
+        var darkwoodMembers = await database.Creatures.AsNoTracking()
+            .Where(x => x.FactionId == faction.Id)
+            .ToArrayAsync(cancellationToken);
+        var huntableWildlife = await database.Creatures.AsNoTracking()
+            .Where(x => x.FactionId == null &&
+                        (x.SpeciesId == LivingRealmsDbContext.ForestRatSpeciesId ||
+                         x.SpeciesId == LivingRealmsDbContext.PrairieWolfSpeciesId))
+            .ToArrayAsync(cancellationToken);
+        var availableWildlife = huntableWildlife.Count(x =>
+            x.Status == CreatureStatus.Alive && x.Health > 0);
+        var stonehavenFood = WorldSurvivalService.CalculateStonehaven(
+            stonehavenResidents,
+            settlement.Food,
+            availableWildlife);
+        var darkwoodFood = WorldSurvivalService.CalculateDarkwood(
+            darkwoodMembers,
+            faction.Resources.Single(x => x.Kind == ResourceKind.Food).Amount,
+            availableWildlife);
         var combatReadyStonehavenResidents = await database.SettlementResidents.AsNoTracking()
             .CountAsync(x => x.SettlementId == settlement.Id &&
                              x.CanFight &&
@@ -301,6 +323,13 @@ public static class PhaseSixEndpoints
                     stonehavenLeader.Trait,
                     stonehavenLeader.IsMajor,
                     stonehavenLeader.MemorySummary)),
+            new SurvivalResponse(
+                ToFoodEconomyResponse(stonehavenFood),
+                ToFoodEconomyResponse(darkwoodFood),
+                new WildlifeResponse(
+                    huntableWildlife.Length,
+                    availableWildlife,
+                    huntableWildlife.Length - availableWildlife)),
             destructibleStructures,
             new WorldEventReadinessResponse(
                 new TriggerReadinessResponse(
@@ -340,6 +369,23 @@ public static class PhaseSixEndpoints
             CentralClock.Now);
     }
 
+    private static FoodEconomyResponse ToFoodEconomyResponse(FoodEconomySnapshot snapshot) =>
+        new(
+            snapshot.Population,
+            snapshot.StoredFood,
+            snapshot.Farmers,
+            snapshot.Fishers,
+            snapshot.Hunters,
+            snapshot.FarmerProductionPerHour,
+            snapshot.FisherProductionPerHour,
+            snapshot.HunterProductionPerHour,
+            snapshot.FoodProducedPerHour,
+            snapshot.FoodConsumedPerHour,
+            snapshot.NetFoodPerHour,
+            snapshot.IsShortage,
+            snapshot.HoursOfFoodRemaining,
+            snapshot.RecommendedRecruitmentRole);
+
     private static string FormatAssaultPhase(StonehavenAssaultStatus status) => status switch
     {
         StonehavenAssaultStatus.Assembling => "Guard Captain Mira is assembling the counterattack at Stonehaven's gate.",
@@ -364,6 +410,7 @@ public static class PhaseSixEndpoints
         bool CanAccelerate,
         FactionResponse Faction,
         SettlementResponse Settlement,
+        SurvivalResponse Survival,
         IReadOnlyCollection<WorldStructureState> Structures,
         WorldEventReadinessResponse EventReadiness,
         EventQueueResponse Events,
@@ -416,6 +463,26 @@ public static class PhaseSixEndpoints
         int GuardStrength,
         bool IsDestroyed,
         SettlementLeaderResponse Leader);
+    public sealed record SurvivalResponse(
+        FoodEconomyResponse Stonehaven,
+        FoodEconomyResponse Darkwood,
+        WildlifeResponse Wildlife);
+    public sealed record FoodEconomyResponse(
+        int Population,
+        int FoodStored,
+        int Farmers,
+        int Fishers,
+        int Hunters,
+        int FarmerProductionPerHour,
+        int FisherProductionPerHour,
+        int HunterProductionPerHour,
+        int FoodProducedPerHour,
+        int FoodConsumedPerHour,
+        int NetFoodPerHour,
+        bool IsShortage,
+        int HoursOfFoodRemaining,
+        string RecommendedRecruitmentRole);
+    public sealed record WildlifeResponse(int Total, int Available, int Respawning);
     public sealed record SettlementLeaderResponse(
         Guid Id,
         string Name,
