@@ -20,6 +20,8 @@ public partial class CombatCreature : CharacterBody3D
     private Vector3 _raidApproachOffset;
     private Vector3 _playerApproachOffset;
     private SettlementNpc? _raidDefenseTarget;
+    private Vector3 _raidStructureTarget;
+    private bool _hasRaidStructureTarget;
     private float _attackCooldown;
     private float _gravity = 9.8f;
     private float _stuckSeconds;
@@ -280,6 +282,21 @@ public partial class CombatCreature : CharacterBody3D
                 PulseAttack();
             }
         }
+        else if (_hasRaidStructureTarget && IsRaidAttacker)
+        {
+            var structureApproach = _pathfinder.GetNearestWalkablePosition(
+                _raidStructureTarget + _raidApproachOffset.Normalized() * 2.2f);
+            var structureDistance = HorizontalDistance(GlobalPosition, _raidStructureTarget);
+            movement = structureDistance > 2.7f
+                ? GetPathDirection(structureApproach, seconds, returningHome: false)
+                : Vector3.Zero;
+            if (structureDistance <= 3.2f && _attackCooldown <= 0)
+            {
+                _attackCooldown = 1.45f;
+                PulseAttack();
+                RaidCombatPulse?.Invoke();
+            }
+        }
         else
         {
             if (IsRaidAttacker)
@@ -311,6 +328,11 @@ public partial class CombatCreature : CharacterBody3D
         else if (hasDefender)
         {
             facingDirection = _raidDefenseTarget!.GlobalPosition - GlobalPosition;
+            facingDirection.Y = 0;
+        }
+        else if (_hasRaidStructureTarget)
+        {
+            facingDirection = _raidStructureTarget - GlobalPosition;
             facingDirection.Y = 0;
         }
         if (facingDirection.LengthSquared() > 0.001f)
@@ -799,6 +821,20 @@ public partial class CombatCreature : CharacterBody3D
         }
 
         _raidDefenseTarget = target;
+        InvalidatePath();
+    }
+
+    public void SetRaidStructureTarget(Vector3? target)
+    {
+        var hasTarget = target is not null;
+        if (_hasRaidStructureTarget == hasTarget &&
+            (!hasTarget || HorizontalDistance(_raidStructureTarget, target!.Value) < 0.1f))
+        {
+            return;
+        }
+
+        _hasRaidStructureTarget = hasTarget;
+        _raidStructureTarget = target ?? Vector3.Zero;
         InvalidatePath();
     }
 

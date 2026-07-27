@@ -142,6 +142,8 @@ public sealed class SettlementRaid : Entity
     public Guid AttackingFactionId { get; set; }
     public Faction AttackingFaction { get; set; } = null!;
     public SettlementRaidStatus Status { get; set; } = SettlementRaidStatus.Scheduled;
+    public DarkwoodRaidPhase Phase { get; set; } = DarkwoodRaidPhase.Assembling;
+    public int PhaseRound { get; set; }
     public int WorldDay { get; set; }
     public DateTimeOffset ScheduledAt { get; set; }
     public DateTimeOffset? StartedAt { get; set; }
@@ -151,6 +153,8 @@ public sealed class SettlementRaid : Entity
     public int AttackerStrength { get; set; }
     public int InitialDefenderStrength { get; set; }
     public int DefenderStrength { get; set; }
+    public int InitialStructureStrength { get; set; }
+    public int StructureStrength { get; set; }
     public int PlayerContribution { get; set; }
     public int SettlementDamage { get; set; }
     public int ResidentCasualties { get; set; }
@@ -178,6 +182,7 @@ public sealed class StonehavenAssault : Entity
     public Guid DefendingFactionId { get; set; }
     public Faction DefendingFaction { get; set; } = null!;
     public StonehavenAssaultStatus Status { get; set; } = StonehavenAssaultStatus.Assembling;
+    public int PhaseRound { get; set; }
     public int WorldDay { get; set; }
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset? LastAdvancedAt { get; set; }
@@ -439,6 +444,14 @@ public enum WorldStructureKind { Wall, Gate, Building, Farm, Mine, Dock, Stockpi
 public enum CreatureStatus { Alive, Dead, Missing, Captured, Promoted, Retired }
 public enum ResidentStatus { Active, Injured, Missing, Dead }
 public enum SettlementRaidStatus { Scheduled, Active, DefendersWon, AttackersWon, Cancelled }
+public enum DarkwoodRaidPhase
+{
+    Assembling,
+    Marching,
+    FightingDefenders,
+    AttackingStructures,
+    Resolved
+}
 public enum StonehavenAssaultStatus
 {
     Assembling,

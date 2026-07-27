@@ -1638,6 +1638,7 @@ public partial class Main : Control
         state.DarkwoodRaidReady,
         state.StonehavenCounterattackReady,
         state.AdministratorOnline,
+        state.IsAdministrator,
         state.CanStartDarkwoodRaid,
         state.CanStartCounterattack,
         state.Raid is null
@@ -1645,11 +1646,15 @@ public partial class Main : Control
             : new WorldRaidData(
                 state.Raid.Id,
                 state.Raid.Status,
+                state.Raid.Phase,
+                state.Raid.PhaseRound,
                 state.Raid.WorldDay,
                 state.Raid.InitialAttackerStrength,
                 state.Raid.AttackerStrength,
                 state.Raid.InitialDefenderStrength,
                 state.Raid.DefenderStrength,
+                state.Raid.InitialStructureStrength,
+                state.Raid.StructureStrength,
                 state.Raid.PlayerContribution,
                 state.Raid.SettlementDamage,
                 state.Raid.ResidentCasualties,
@@ -2175,6 +2180,7 @@ public partial class Main : Control
         public bool DarkwoodRaidReady { get; init; }
         public bool StonehavenCounterattackReady { get; init; }
         public bool AdministratorOnline { get; init; }
+        public bool IsAdministrator { get; init; }
         public bool CanStartDarkwoodRaid { get; init; }
         public bool CanStartCounterattack { get; init; }
         public RaidResponse? Raid { get; init; }
@@ -2186,11 +2192,15 @@ public partial class Main : Control
     {
         public Guid Id { get; init; }
         public string Status { get; init; } = string.Empty;
+        public string Phase { get; init; } = string.Empty;
+        public int PhaseRound { get; init; }
         public int WorldDay { get; init; }
         public int InitialAttackerStrength { get; init; }
         public int AttackerStrength { get; init; }
         public int InitialDefenderStrength { get; init; }
         public int DefenderStrength { get; init; }
+        public int InitialStructureStrength { get; init; }
+        public int StructureStrength { get; init; }
         public int PlayerContribution { get; init; }
         public int SettlementDamage { get; init; }
         public int ResidentCasualties { get; init; }

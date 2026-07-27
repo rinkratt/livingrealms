@@ -124,7 +124,10 @@ public partial class StonehavenValley : Node3D
     private float _resetConfirmationSeconds;
     private float _knockoutProtectionSeconds;
     private bool _raidActive;
+    private string _darkwoodRaidPhase = string.Empty;
     private bool _counterattackActive;
+    private bool _canStartDarkwoodRaid;
+    private bool _canStartCounterattack;
     private string _counterattackPhase = string.Empty;
     private bool _raidCombatObservedSinceAdvance;
     private bool _stylizedEnvironmentLoaded;
@@ -267,10 +270,7 @@ public partial class StonehavenValley : Node3D
         };
         _raidAdvanceTimer.Timeout += () =>
         {
-            var counterattackIsMoving = _counterattackActive &&
-                                        (_counterattackPhase.Equals("Assembling", StringComparison.OrdinalIgnoreCase) ||
-                                         _counterattackPhase.Equals("Marching", StringComparison.OrdinalIgnoreCase));
-            if (_raidActive && (_raidCombatObservedSinceAdvance || counterattackIsMoving))
+            if (_raidActive)
             {
                 _raidCombatObservedSinceAdvance = false;
                 RaidAdvanceRequested?.Invoke();
@@ -758,6 +758,7 @@ public partial class StonehavenValley : Node3D
         {
             _destructibleStructures[structure.Key] = structure;
         }
+        UpdateRaidStructureTargets();
         if (!changed)
         {
             return;
@@ -1635,10 +1636,12 @@ public partial class StonehavenValley : Node3D
     {
         if (IsInstanceValid(_startRaidButton))
         {
-            _startRaidButton.Disabled = busy;
+            _startRaidButton.Disabled = busy || !_canStartDarkwoodRaid;
             _startRaidButton.Text = busy
-                ? "Darkwood Is Marching..."
-                : "Start Darkwood Raid  [Playtest]";
+                ? "Darkwood Is Assembling..."
+                : _canStartDarkwoodRaid
+                    ? "Authorize Darkwood Raid"
+                    : "Darkwood Raid Not Ready";
         }
     }
 
@@ -1646,16 +1649,21 @@ public partial class StonehavenValley : Node3D
     {
         if (IsInstanceValid(_startCounterattackButton))
         {
-            _startCounterattackButton.Disabled = busy;
+            _startCounterattackButton.Disabled = busy || !_canStartCounterattack;
             _startCounterattackButton.Text = busy
                 ? "Stonehaven Is Assembling..."
-                : "Authorize Stonehaven Counterattack";
+                : _canStartCounterattack
+                    ? "Authorize Stonehaven Counterattack"
+                    : "Stonehaven Counterattack Not Ready";
         }
     }
 
     public void SetRaidState(WorldRaidStateData state)
     {
         _raidActive = state.Active;
+        _canStartDarkwoodRaid = state.CanStartDarkwoodRaid;
+        _canStartCounterattack = state.CanStartCounterattack;
+        _darkwoodRaidPhase = state.Raid?.Phase ?? string.Empty;
         _counterattackPhase = state.Counterattack?.Status ?? string.Empty;
         _counterattackActive = state.Counterattack is not null &&
                                IsActiveCounterattackStatus(_counterattackPhase);
@@ -1669,15 +1677,23 @@ public partial class StonehavenValley : Node3D
             return;
         }
 
-        _startRaidButton.Visible = state.CanStartDarkwoodRaid;
-        _startRaidButton.Disabled = false;
-        _startRaidButton.Text = "Authorize Darkwood Raid";
-        _startCounterattackButton.Visible = state.CanStartCounterattack;
-        _startCounterattackButton.Disabled = false;
-        _startCounterattackButton.Text = "Authorize Stonehaven Counterattack";
+        _startRaidButton.Visible = state.IsAdministrator;
+        _startRaidButton.Disabled = !state.CanStartDarkwoodRaid;
+        _startRaidButton.Text = state.CanStartDarkwoodRaid
+            ? "Authorize Darkwood Raid"
+            : "Darkwood Raid Not Ready";
+        _startCounterattackButton.Visible = state.IsAdministrator;
+        _startCounterattackButton.Disabled = !state.CanStartCounterattack;
+        _startCounterattackButton.Text = state.CanStartCounterattack
+            ? "Authorize Stonehaven Counterattack"
+            : "Stonehaven Counterattack Not Ready";
+        var darkwoodRaidActive = state.Raid?.Status.Equals(
+            "Active",
+            StringComparison.OrdinalIgnoreCase) == true;
         if (state.Counterattack is not null &&
-            (_counterattackActive || state.Raid is null ||
-             state.Counterattack.WorldDay >= state.Raid.WorldDay))
+            (_counterattackActive ||
+             (!darkwoodRaidActive &&
+              (state.Raid is null || state.Counterattack.WorldDay >= state.Raid.WorldDay))))
         {
             var assault = state.Counterattack;
             _raidHudLabel.Visible = true;
@@ -1714,14 +1730,16 @@ public partial class StonehavenValley : Node3D
         {
             _raidHudLabel.Visible = true;
             _raidHudLabel.Text =
-                $"RAID ACTIVE  •  DARKWOOD {raid.AttackerStrength}/{raid.InitialAttackerStrength}  •  STONEHAVEN {raid.DefenderStrength}/{raid.InitialDefenderStrength}";
+                $"DARKWOOD CAMPAIGN  •  {FormatDarkwoodRaidPhase(raid.Phase).ToUpperInvariant()}  •  RAIDERS {attackersStanding}/{raid.Attackers.Count}";
             _raidHudLabel.Modulate = new Color("f0644c");
             _raidDetails.Text =
-                $"DARKWOOD RAID — ACTIVE ON WORLD DAY {raid.WorldDay}\n" +
+                $"DARKWOOD RAID — {FormatDarkwoodRaidPhase(raid.Phase).ToUpperInvariant()} ON WORLD DAY {raid.WorldDay}\n" +
                 $"ATTACKER STRENGTH {raid.AttackerStrength}/{raid.InitialAttackerStrength}   •   " +
                 $"DEFENDER STRENGTH {raid.DefenderStrength}/{raid.InitialDefenderStrength}   •   " +
-                $"ATTACKERS STANDING {attackersStanding}/{raid.Attackers.Count}\n" +
-                $"PLAYER CONTRIBUTION {raid.PlayerContribution}   •   Defeat the named invaders before Stonehaven's defense reaches zero.";
+                $"STRUCTURE HEALTH {raid.StructureStrength}/{raid.InitialStructureStrength}\n" +
+                $"ATTACKERS STANDING {attackersStanding}/{raid.Attackers.Count}   •   " +
+                $"PLAYER CONTRIBUTION {raid.PlayerContribution}\n" +
+                DarkwoodRaidInstruction(raid.Phase);
         }
         else
         {
@@ -1950,6 +1968,7 @@ public partial class StonehavenValley : Node3D
 
     private void UpdateRaidCombatAssignments()
     {
+        UpdateRaidStructureTargets();
         if (_counterattackActive)
         {
             var soldiers = _residents.Values
@@ -1991,6 +2010,41 @@ public partial class StonehavenValley : Node3D
                 .ToArray();
         }
         AssignOpposingCombatGroups(attackers, defenders);
+    }
+
+    private void UpdateRaidStructureTargets()
+    {
+        Vector3? targetPosition = null;
+        if (_raidActive &&
+            _darkwoodRaidPhase.Equals("AttackingStructures", StringComparison.OrdinalIgnoreCase))
+        {
+            targetPosition = _destructibleStructures.Values
+                .Where(structure =>
+                    structure.Owner.Equals("Stonehaven", StringComparison.OrdinalIgnoreCase) &&
+                    structure.IsBuilt &&
+                    structure.Health > 0)
+                .OrderBy(structure => structure.Kind switch
+                {
+                    "Wall" => 0,
+                    "Gate" => 1,
+                    "Mine" => 2,
+                    "Farm" => 3,
+                    "Stockpile" => 4,
+                    "Building" => 5,
+                    "Dock" => 6,
+                    _ => 7
+                })
+                .ThenBy(structure => structure.Health)
+                .ThenBy(structure => structure.Name)
+                .Select(structure => (Vector3?)structure.Position)
+                .FirstOrDefault();
+        }
+
+        foreach (var creature in _creatures.Values)
+        {
+            creature.SetRaidStructureTarget(
+                creature.IsRaidAttacker ? targetPosition : null);
+        }
     }
 
     private void AssignOpposingCombatGroups(
@@ -4907,6 +4961,25 @@ public partial class StonehavenValley : Node3D
         _ => status
     };
 
+    private static string FormatDarkwoodRaidPhase(string phase) => phase switch
+    {
+        "Assembling" => "assembling at Darkwood",
+        "Marching" => "marching on Stonehaven",
+        "FightingDefenders" => "fighting Stonehaven's defenders",
+        "AttackingStructures" => "destroying Stonehaven's structures",
+        "Resolved" => "resolved",
+        _ => phase
+    };
+
+    private static string DarkwoodRaidInstruction(string phase) => phase switch
+    {
+        "Assembling" => "The selected Darkwood fighters are gathering at their camp. The campaign remains persisted on the server.",
+        "Marching" => "The raiders are crossing the connected grids toward Stonehaven. They cannot vanish or time out.",
+        "FightingDefenders" => "The raid must defeat Stonehaven's living guards and militia before any structure can be damaged.",
+        "AttackingStructures" => "Surviving raiders are striking walls, gates, farms, and buildings by their persistent hit points.",
+        _ => "The campaign continues until one force is defeated or its settlement objective is destroyed."
+    };
+
     private static bool IsActiveCounterattackStatus(string status) => status is
         "Assembling" or "Marching" or "FightingGoblins" or "AttackingCamp";
 
@@ -5182,6 +5255,7 @@ public sealed record WorldRaidStateData(
     bool DarkwoodRaidReady,
     bool StonehavenCounterattackReady,
     bool AdministratorOnline,
+    bool IsAdministrator,
     bool CanStartDarkwoodRaid,
     bool CanStartCounterattack,
     WorldRaidData? Raid,
@@ -5190,11 +5264,15 @@ public sealed record WorldRaidStateData(
 public sealed record WorldRaidData(
     Guid Id,
     string Status,
+    string Phase,
+    int PhaseRound,
     int WorldDay,
     int InitialAttackerStrength,
     int AttackerStrength,
     int InitialDefenderStrength,
     int DefenderStrength,
+    int InitialStructureStrength,
+    int StructureStrength,
     int PlayerContribution,
     int SettlementDamage,
     int ResidentCasualties,

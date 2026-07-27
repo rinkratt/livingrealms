@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.12
+LIVING REALMS WINDOWS PLAYTEST 0.9.13
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -36,7 +36,7 @@ IMPORTANT CONTROLS
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
 
-BUILD 0.9.12
+BUILD 0.9.13
 - Uses one authoritative build identity for the login header and updater.
 - Adds persistent health and armor for 34 Stonehaven and Darkwood assets.
 - Makes campaign results damage real walls, gates, buildings, farms, mines,

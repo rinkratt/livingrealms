@@ -14,6 +14,7 @@ public sealed partial class RaidSimulationService(
 {
     private static readonly TimeSpan OnlineRaidRoundInterval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ActivePlayerWindow = TimeSpan.FromMinutes(2);
+    private const int CampaignMarchRounds = 4;
     private static readonly (float X, float Y, float Z)[] RaidSpawns =
     [
         (-124.0f, 0.08f, -96.0f),
@@ -31,6 +32,13 @@ public sealed partial class RaidSimulationService(
         (-112.0f, 0.08f, -103.0f),
         (-107.0f, 0.08f, -103.0f),
         (-102.0f, 0.08f, -103.0f)
+    ];
+    private static readonly (float X, float Y, float Z)[] RaidMarchWaypoints =
+    [
+        (-98.0f, 0.08f, -98.0f),
+        (-96.0f, 0.08f, 10.0f),
+        (-42.0f, 0.08f, 12.0f),
+        (-12.0f, 0.08f, 11.0f)
     ];
 
     private static bool IsActive(StonehavenAssaultStatus status) =>
@@ -104,11 +112,16 @@ public sealed partial class RaidSimulationService(
             })
             .ThenBy(x => x.Name)
             .Take(raidSize)
-            .ToArray();
-        if (raidMembers.Length < raidSize)
+            .ToList();
+        if (raidMembers.Count < raidSize)
         {
             throw new InvalidOperationException(
                 $"Darkwood does not have {raidSize} available clan members for this raid.");
+        }
+
+        if (!developmentPlaytest && ShouldLeaderJoinRaid(leader, faction))
+        {
+            raidMembers.Add(leader);
         }
 
         var attackerStrength = 0;
@@ -118,11 +131,16 @@ public sealed partial class RaidSimulationService(
                         x.Health > 0 &&
                         (x.Status == ResidentStatus.Active || x.Status == ResidentStatus.Injured))
             .SumAsync(x => x.Health, cancellationToken);
+        var structureStrength = await structures.GetRemainingHealthAsync(
+            ResourceOwner.Stonehaven,
+            cancellationToken);
         var raid = new SettlementRaid
         {
             SettlementId = settlement.Id,
             AttackingFactionId = faction.Id,
             Status = SettlementRaidStatus.Active,
+            Phase = DarkwoodRaidPhase.Assembling,
+            PhaseRound = 0,
             WorldDay = (int)(faction.SimulatedHours / 24) + 1,
             ScheduledAt = startedAt,
             StartedAt = startedAt,
@@ -131,14 +149,16 @@ public sealed partial class RaidSimulationService(
             AttackerStrength = attackerStrength,
             InitialDefenderStrength = defenderStrength,
             DefenderStrength = defenderStrength,
+            InitialStructureStrength = structureStrength,
+            StructureStrength = structureStrength,
             CreatedAt = startedAt,
             UpdatedAt = startedAt
         };
         database.SettlementRaids.Add(raid);
 
-        for (var index = 0; index < raidMembers.Length; index++)
+        for (var index = 0; index < raidMembers.Count; index++)
         {
-            var spawn = RaidSpawns[index];
+            var spawn = RaidSpawns[index % RaidSpawns.Length];
             var creature = raidMembers[index];
             attackerStrength += creature.Health;
             creature.Title ??= creature.Role;
@@ -168,8 +188,8 @@ public sealed partial class RaidSimulationService(
         database.WorldHistory.Add(new WorldHistory
         {
             EventType = "stonehaven_raid_begun",
-            Title = "The Darkwood war horn sounded at Stonehaven",
-            Description = $"All {raidMembers.Length} raid-ready Darkwood fighters left {leader.Name}'s camp and marched for Stonehaven on world day {raid.WorldDay}. Stonehaven's guards and every nearby player can change the outcome.",
+            Title = "The Darkwood war horn sounded",
+            Description = $"{raidMembers.Count} raid-ready Darkwood fighters answered {leader.Name}'s war horn on world day {raid.WorldDay}. They must assemble, march to Stonehaven, defeat its defenders, and physically destroy its structures before Darkwood can claim victory.",
             RegionId = LivingRealmsDbContext.StonehavenValleyId,
             FactionId = faction.Id,
             CreatureId = leader.Id,
@@ -216,39 +236,79 @@ public sealed partial class RaidSimulationService(
                 break;
             }
 
-            var livingDefenders = GetFrontLineDefenders(raid.Settlement.Residents);
-            if (livingDefenders.Length == 0)
+            if (raid.Phase == DarkwoodRaidPhase.Assembling)
             {
-                raid.DefenderStrength = 0;
-                await ResolveRaidAsync(raid, defendersWon: false, advancedAt, cancellationToken);
-                break;
+                raid.Phase = DarkwoodRaidPhase.Marching;
+                raid.PhaseRound = 0;
+                continue;
             }
 
-            DamageAttackers(livingDefenders, raid.Attackers, advancedAt);
-            livingAttackers = GetLivingAttackers(raid.Attackers);
-            if (livingAttackers.Length > 0)
+            if (raid.Phase == DarkwoodRaidPhase.Marching)
             {
-                raid.ResidentCasualties += DamageDefenders(
-                    livingAttackers,
-                    raid.Settlement.Residents,
-                    advancedAt);
-                ApplySettlementSupport(raid.Settlement.Residents, advancedAt);
+                MoveRaidFormation(raid.Attackers, raid.PhaseRound, advancedAt);
+                raid.PhaseRound++;
+                if (raid.PhaseRound >= CampaignMarchRounds)
+                {
+                    raid.Phase = DarkwoodRaidPhase.FightingDefenders;
+                    raid.PhaseRound = 0;
+                }
+                continue;
             }
 
-            raid.AttackerStrength = GetLivingAttackers(raid.Attackers).Sum(x => x.Creature.Health);
-            raid.DefenderStrength = GetLivingDefenders(raid.Settlement.Residents).Sum(x => x.Health);
-            if (raid.AttackerStrength == 0)
+            if (raid.Phase == DarkwoodRaidPhase.FightingDefenders)
             {
-                await ResolveRaidAsync(raid, defendersWon: true, advancedAt, cancellationToken);
+                var livingDefenders = GetFrontLineDefenders(raid.Settlement.Residents);
+                if (livingDefenders.Length == 0)
+                {
+                    raid.DefenderStrength = 0;
+                    raid.Phase = DarkwoodRaidPhase.AttackingStructures;
+                    raid.PhaseRound = 0;
+                    continue;
+                }
+
+                DamageAttackers(livingDefenders, raid.Attackers, advancedAt);
+                livingAttackers = GetLivingAttackers(raid.Attackers);
+                if (livingAttackers.Length > 0)
+                {
+                    raid.ResidentCasualties += DamageDefenders(
+                        livingAttackers,
+                        raid.Settlement.Residents,
+                        advancedAt);
+                    ApplySettlementSupport(raid.Settlement.Residents, advancedAt);
+                }
+
+                raid.AttackerStrength = GetLivingAttackers(raid.Attackers).Sum(x => x.Creature.Health);
+                raid.DefenderStrength = GetLivingDefenders(raid.Settlement.Residents).Sum(x => x.Health);
+                if (raid.AttackerStrength == 0)
+                {
+                    await ResolveRaidAsync(raid, defendersWon: true, advancedAt, cancellationToken);
+                    break;
+                }
+                if (raid.DefenderStrength == 0)
+                {
+                    raid.Phase = DarkwoodRaidPhase.AttackingStructures;
+                    raid.PhaseRound = 0;
+                }
+                continue;
             }
-            else if (GetLivingAttackers(raid.Attackers).Length == 1 &&
-                     raid.AttackerStrength <= Math.Max(1, raid.InitialAttackerStrength / 5))
+
+            if (raid.Phase == DarkwoodRaidPhase.AttackingStructures)
             {
-                await ResolveRaidAsync(raid, defendersWon: true, advancedAt, cancellationToken);
-            }
-            else if (raid.DefenderStrength == 0)
-            {
-                await ResolveRaidAsync(raid, defendersWon: false, advancedAt, cancellationToken);
+                var structureDamage = livingAttackers.Sum(attacker =>
+                    Math.Max(8, attacker.Creature.Attack));
+                var impact = await structures.DamageOwnerAsync(
+                    ResourceOwner.Stonehaven,
+                    structureDamage,
+                    advancedAt,
+                    cancellationToken);
+                raid.PhaseRound++;
+                raid.SettlementDamage += impact.DamageApplied;
+                raid.StructureStrength = impact.OwnerHealthRemaining;
+                if (raid.StructureStrength == 0)
+                {
+                    await ResolveRaidAsync(raid, defendersWon: false, advancedAt, cancellationToken);
+                    break;
+                }
             }
         }
 
@@ -414,6 +474,7 @@ public sealed partial class RaidSimulationService(
             SettlementId = settlement.Id,
             DefendingFactionId = faction.Id,
             Status = StonehavenAssaultStatus.Assembling,
+            PhaseRound = 0,
             WorldDay = (int)(faction.SimulatedHours / 24) + 1,
             StartedAt = startedAt,
             LastAdvancedAt = startedAt,
@@ -482,12 +543,22 @@ public sealed partial class RaidSimulationService(
         {
             if (assault.Status == StonehavenAssaultStatus.Assembling)
             {
-                assault.Status = StonehavenAssaultStatus.Marching;
+                assault.PhaseRound++;
+                if (assault.PhaseRound >= 2)
+                {
+                    assault.Status = StonehavenAssaultStatus.Marching;
+                    assault.PhaseRound = 0;
+                }
                 continue;
             }
             if (assault.Status == StonehavenAssaultStatus.Marching)
             {
-                assault.Status = StonehavenAssaultStatus.FightingGoblins;
+                assault.PhaseRound++;
+                if (assault.PhaseRound >= CampaignMarchRounds)
+                {
+                    assault.Status = StonehavenAssaultStatus.FightingGoblins;
+                    assault.PhaseRound = 0;
+                }
                 continue;
             }
 
@@ -587,18 +658,12 @@ public sealed partial class RaidSimulationService(
                         session.LastSeenAt != null &&
                         session.LastSeenAt >= processedAt.Subtract(ActivePlayerWindow),
                     cancellationToken);
-            if (hasActivePlayer)
-            {
-                // A connected game client advances the visible raid on its own
-                // real-time cadence. The world worker remains responsible only
-                // when nobody is present to observe or influence the battle.
-                return;
-            }
-
             await AdvanceActiveConflictAsync(
                 processedAt,
-                Math.Clamp(Math.Max(1, worldHours / 2), 1, 24),
-                ignoreMinimumInterval: true,
+                hasActivePlayer
+                    ? 1
+                    : Math.Clamp(Math.Max(1, worldHours / 2), 1, 24),
+                ignoreMinimumInterval: !hasActivePlayer,
                 cancellationToken);
             return;
         }
@@ -882,12 +947,16 @@ public sealed partial class RaidSimulationService(
         }
 
         raid.Status = defendersWon ? SettlementRaidStatus.DefendersWon : SettlementRaidStatus.AttackersWon;
+        raid.Phase = DarkwoodRaidPhase.Resolved;
         raid.ResolvedAt = resolvedAt;
         if (defendersWon)
         {
             foreach (var attacker in raid.Attackers.Where(x => !x.IsDefeated))
             {
-                WithdrawAttacker(attacker, resolvedAt);
+                WithdrawAttacker(
+                    attacker,
+                    resolvedAt,
+                    attacker.CreatureId == raid.AttackingFaction.LeaderCreatureId);
             }
         }
 
@@ -897,26 +966,21 @@ public sealed partial class RaidSimulationService(
 
         if (defendersWon)
         {
-            raid.SettlementDamage = Math.Clamp(
-                (raid.InitialDefenderStrength - raid.DefenderStrength) * 2,
-                12,
-                160);
+            raid.SettlementDamage += Math.Clamp(
+                raid.InitialDefenderStrength - raid.DefenderStrength,
+                0,
+                80);
             raid.Settlement.StructuralIntegrity = Math.Max(0,
                 raid.Settlement.StructuralIntegrity - raid.SettlementDamage);
-            var structureImpact = await structures.DamageOwnerAsync(
-                ResourceOwner.Stonehaven,
-                Math.Max(12, raid.SettlementDamage / 2),
-                resolvedAt,
-                cancellationToken);
             raid.AttackingFaction.Morale = Math.Max(0, raid.AttackingFaction.Morale - 6);
             raid.ResidentInjuries = raid.Settlement.Residents.Count(x => x.Status == ResidentStatus.Injured);
             raid.OutcomeSummary = raid.PlayerContribution > 0
-                ? $"Stonehaven repelled the raid. Players contributed {raid.PlayerContribution} strength; the village suffered {raid.SettlementDamage} structural damage, including {structureImpact.DamageApplied} persistent structure damage, and lost {raid.ResidentCasualties} defender(s)."
-                : $"Stonehaven's guards repelled the raid, suffered {raid.SettlementDamage} structural damage, including {structureImpact.DamageApplied} persistent structure damage, and lost {raid.ResidentCasualties} defender(s).";
+                ? $"Stonehaven repelled the persistent campaign. Players contributed {raid.PlayerContribution} strength; the village suffered {raid.SettlementDamage} damage and lost {raid.ResidentCasualties} defender(s)."
+                : $"Stonehaven's guards repelled the persistent campaign, suffered {raid.SettlementDamage} damage, and lost {raid.ResidentCasualties} defender(s).";
         }
         else
         {
-            raid.SettlementDamage = 240;
+            raid.SettlementDamage = Math.Max(raid.SettlementDamage, 240);
             raid.Settlement.StructuralIntegrity = Math.Max(0,
                 raid.Settlement.StructuralIntegrity - raid.SettlementDamage);
             raid.Settlement.DefenseRating = Math.Max(10, raid.Settlement.DefenseRating - 8);
@@ -924,19 +988,6 @@ public sealed partial class RaidSimulationService(
             raid.Settlement.Food = Math.Max(0, raid.Settlement.Food - 80);
             raid.Settlement.Wood = Math.Max(0, raid.Settlement.Wood - 40);
             raid.Settlement.Iron = Math.Max(0, raid.Settlement.Iron - 10);
-            WorldStructureDamageResult? structureImpact = null;
-            for (var strike = 0; strike < 8 && structureImpact?.Destroyed != true; strike++)
-            {
-                structureImpact = await structures.DamageOwnerAsync(
-                    ResourceOwner.Stonehaven,
-                    raid.SettlementDamage,
-                    resolvedAt,
-                    cancellationToken);
-                if (structureImpact.StructureKey is null)
-                {
-                    break;
-                }
-            }
             raid.ResidentCasualties += ApplyCivilianConsequences(raid.Settlement.Residents, resolvedAt);
             raid.ResidentInjuries = raid.Settlement.Residents.Count(x => x.Status == ResidentStatus.Injured);
             raid.AttackingFaction.Morale = Math.Min(100, raid.AttackingFaction.Morale + 8);
@@ -947,8 +998,8 @@ public sealed partial class RaidSimulationService(
             }
             var survivingRaiders = GetLivingAttackers(raid.Attackers).Length;
             raid.OutcomeSummary =
-                $"Darkwood breached Stonehaven, caused {raid.SettlementDamage} settlement damage, " +
-                $"{(structureImpact?.Destroyed == true ? $"destroyed {structureImpact.StructureKey}, " : "damaged its defenses, ")}" +
+                $"Darkwood fought through Stonehaven's defenders and reduced its built structures from {raid.InitialStructureStrength} to {raid.StructureStrength} health, " +
+                $"causing {raid.SettlementDamage} settlement damage, " +
                 $"injured {raid.ResidentInjuries}, and killed {raid.ResidentCasualties} resident(s). " +
                 $"{survivingRaiders} surviving raider(s) remain in the village until players defeat them or the world is reset.";
         }
@@ -974,6 +1025,36 @@ public sealed partial class RaidSimulationService(
         LogRaidResolved(logger, raid.Id, raid.Status.ToString(), raid.PlayerContribution, CentralNow());
     }
 
+    private static bool ShouldLeaderJoinRaid(Creature leader, Faction faction)
+    {
+        var worldDay = (int)(faction.SimulatedHours / 24) + 1;
+        var roll = (leader.Id.ToByteArray()[0] + worldDay * 17) % 100;
+        return roll < 35;
+    }
+
+    private static void MoveRaidFormation(
+        IEnumerable<SettlementRaidAttacker> attackers,
+        int marchRound,
+        DateTimeOffset movedAt)
+    {
+        var waypoint = RaidMarchWaypoints[Math.Clamp(
+            marchRound,
+            0,
+            RaidMarchWaypoints.Length - 1)];
+        var living = GetLivingAttackers(attackers);
+        for (var index = 0; index < living.Length; index++)
+        {
+            var lane = index % 5 - 2;
+            var rank = index / 5;
+            var creature = living[index].Creature;
+            creature.PositionX = waypoint.X + lane * 1.6f;
+            creature.PositionY = waypoint.Y;
+            creature.PositionZ = waypoint.Z - rank * 1.8f;
+            creature.LastProcessedAt = movedAt;
+            creature.UpdatedAt = movedAt;
+        }
+    }
+
     private static void RetireAttacker(
         SettlementRaidAttacker attacker,
         DateTimeOffset defeatedAt,
@@ -990,10 +1071,15 @@ public sealed partial class RaidSimulationService(
         attacker.Creature.LastProcessedAt = defeatedAt;
     }
 
-    private static void WithdrawAttacker(SettlementRaidAttacker attacker, DateTimeOffset withdrawnAt)
+    private static void WithdrawAttacker(
+        SettlementRaidAttacker attacker,
+        DateTimeOffset withdrawnAt,
+        bool isFactionLeader)
     {
         attacker.UpdatedAt = withdrawnAt;
-        attacker.Creature.Role = attacker.Creature.Title ?? "Clan Raider";
+        attacker.Creature.Role = isFactionLeader
+            ? "Chief"
+            : attacker.Creature.Title ?? "Clan Raider";
         attacker.Creature.PositionX = attacker.Creature.SpawnX;
         attacker.Creature.PositionY = attacker.Creature.SpawnY;
         attacker.Creature.PositionZ = attacker.Creature.SpawnZ;

@@ -47,6 +47,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         Assert.True(started.Active);
         Assert.NotNull(started.Raid);
         Assert.Equal("Active", started.Raid.Status);
+        Assert.Equal("Assembling", started.Raid.Phase);
         Assert.Equal(4, started.Raid.Attackers.Length);
         Assert.All(started.Raid.Attackers, x => Assert.False(x.IsDefeated));
 
@@ -81,7 +82,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         Assert.Contains(await database.WorldHistory.ToListAsync(), x => x.EventType == "stonehaven_raid_begun");
 
         var simulation = scope.ServiceProvider.GetRequiredService<RaidSimulationService>();
-        await simulation.AdvanceActiveRaidAsync(DateTimeOffset.UtcNow.AddMinutes(1), 1, true);
+        await simulation.AdvanceActiveRaidAsync(DateTimeOffset.UtcNow.AddMinutes(1), 6, true);
         database.ChangeTracker.Clear();
         var frontLine = await database.SettlementResidents
             .Where(x => x.Role.Contains("Guard"))
@@ -175,7 +176,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         await database.SaveChangesAsync();
 
         var simulation = scope.ServiceProvider.GetRequiredService<RaidSimulationService>();
-        await simulation.AdvanceActiveRaidAsync(DateTimeOffset.UtcNow.AddMinutes(1), 1, true);
+        await simulation.AdvanceActiveRaidAsync(DateTimeOffset.UtcNow.AddMinutes(1), 6, true);
         database.ChangeTracker.Clear();
 
         captain = await database.SettlementResidents.SingleAsync(x => x.Name == "Mira");
@@ -227,12 +228,12 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
     }
 
     [Fact]
-    public async Task WoundedSurvivorRetreatsHomeAndCanJoinALaterRaid()
+    public async Task LastWoundedRaiderKeepsCampaignActiveUntilDefeated()
     {
         using var client = _factory.CreateClient();
         var registration = await RegisterAsync(client);
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", registration.Token);
-        await SelectAldenAsync(client, registration);
+        var characterId = await SelectAldenAsync(client, registration);
 
         using (var populationScope = _factory.Services.CreateScope())
         {
@@ -253,8 +254,8 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
                 .Include(x => x.Creature)
                 .OrderBy(x => x.Creature.Name)
                 .ToListAsync();
-            var survivor = attackers.First(x => x.Creature.Title == "Clan Raider");
-            survivorId = survivor.CreatureId;
+            var selectedSurvivor = attackers.First(x => x.Creature.Title == "Clan Raider");
+            survivorId = selectedSurvivor.CreatureId;
             foreach (var attacker in attackers)
             {
                 attacker.Creature.Health = attacker.CreatureId == survivorId ? 50 : 1;
@@ -262,28 +263,30 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             await database.SaveChangesAsync();
 
             var simulation = scope.ServiceProvider.GetRequiredService<RaidSimulationService>();
-            await simulation.AdvanceActiveRaidAsync(DateTimeOffset.UtcNow.AddMinutes(1), 3, true);
+            await simulation.AdvanceActiveRaidAsync(DateTimeOffset.UtcNow.AddMinutes(1), 8, true);
+            database.ChangeTracker.Clear();
+            var activeRaid = await database.SettlementRaids.SingleAsync();
+            Assert.Equal(SettlementRaidStatus.Active, activeRaid.Status);
+            var woundedSurvivor = await database.SettlementRaidAttackers
+                .Include(x => x.Creature)
+                .SingleAsync(x => x.CreatureId == survivorId);
+            Assert.False(woundedSurvivor.IsDefeated);
+            Assert.True(woundedSurvivor.Creature.Health > 0);
+            await simulation.RegisterPlayerDefeatAsync(
+                woundedSurvivor.Creature,
+                characterId,
+                DateTimeOffset.UtcNow.AddMinutes(2));
         }
 
-        using (var verificationScope = _factory.Services.CreateScope())
-        {
-            var verification = verificationScope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
-            var firstRaid = await verification.SettlementRaids.SingleAsync();
-            Assert.Equal(SettlementRaidStatus.DefendersWon, firstRaid.Status);
-            var survivor = await verification.Creatures.SingleAsync(x => x.Id == survivorId);
-            Assert.Equal(CreatureStatus.Alive, survivor.Status);
-            Assert.Equal("Clan Raider", survivor.Role);
-            Assert.Equal(survivor.SpawnX, survivor.PositionX);
-            Assert.Equal(survivor.SpawnZ, survivor.PositionZ);
-        }
-
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/v1/world/raid/start", null)).StatusCode);
-        using var finalScope = _factory.Services.CreateScope();
-        var finalDatabase = finalScope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
-        Assert.Equal(2, await finalDatabase.SettlementRaids.CountAsync());
-        Assert.Equal(
-            2,
-            await finalDatabase.SettlementRaidAttackers.CountAsync(x => x.CreatureId == survivorId));
+        using var verificationScope = _factory.Services.CreateScope();
+        var verification = verificationScope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
+        var resolvedRaid = await verification.SettlementRaids.SingleAsync();
+        Assert.Equal(SettlementRaidStatus.DefendersWon, resolvedRaid.Status);
+        Assert.Equal(DarkwoodRaidPhase.Resolved, resolvedRaid.Phase);
+        var survivor = await verification.Creatures.SingleAsync(x => x.Id == survivorId);
+        Assert.Equal(CreatureStatus.Retired, survivor.Status);
+        Assert.Equal(0, survivor.Health);
+        Assert.Null(survivor.RespawnAt);
     }
 
     [Fact]
@@ -319,11 +322,14 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         var database = verificationScope.ServiceProvider.GetRequiredService<LivingRealmsDbContext>();
         var raid = await database.SettlementRaids.SingleAsync();
         Assert.Equal(SettlementRaidStatus.AttackersWon, raid.Status);
-        Assert.Equal(240, raid.SettlementDamage);
+        Assert.Equal(DarkwoodRaidPhase.Resolved, raid.Phase);
+        Assert.True(raid.SettlementDamage >= 240);
+        Assert.Equal(0, raid.StructureStrength);
         Assert.Equal(4, raid.ResidentCasualties);
         Assert.True(raid.ResidentInjuries >= 1);
         var settlement = await database.Settlements.SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId);
-        Assert.Equal(760, settlement.StructuralIntegrity);
+        Assert.Equal(0, settlement.StructuralIntegrity);
+        Assert.True(settlement.IsDestroyed);
         Assert.Equal(4, settlement.Population);
         var residents = await database.SettlementResidents.ToListAsync();
         Assert.All(
@@ -591,7 +597,11 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
             .Include(x => x.Attackers)
             .SingleAsync();
         Assert.Equal(SettlementRaidStatus.Active, raid.Status);
-        Assert.Equal(15, raid.Attackers.Count);
+        Assert.InRange(raid.Attackers.Count, 15, 16);
+        if (raid.Attackers.Count == 16)
+        {
+            Assert.Contains(raid.Attackers, x => x.CreatureId == faction.LeaderCreatureId);
+        }
     }
 
     private async Task<AuthenticationResponse> RegisterAsync(HttpClient client, bool administrator = true)
@@ -631,6 +641,7 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
         bool DarkwoodRaidReady,
         bool StonehavenCounterattackReady,
         bool AdministratorOnline,
+        bool IsAdministrator,
         bool CanStartDarkwoodRaid,
         bool CanStartCounterattack,
         RaidResponse? Raid,
@@ -638,11 +649,15 @@ public sealed class PhaseSevenBRaidEndpointTests : IClassFixture<PhaseTwoWebAppl
     private sealed record RaidResponse(
         Guid Id,
         string Status,
+        string Phase,
+        int PhaseRound,
         int WorldDay,
         int InitialAttackerStrength,
         int AttackerStrength,
         int InitialDefenderStrength,
         int DefenderStrength,
+        int InitialStructureStrength,
+        int StructureStrength,
         int PlayerContribution,
         int SettlementDamage,
         int ResidentCasualties,

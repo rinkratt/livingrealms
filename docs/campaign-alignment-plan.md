@@ -20,7 +20,7 @@ work.
   buildings, farms, the A3 mine, and Darkwood camp structures.
 - Destroyed structures alter collision and navigation.
 
-## Phase 3: complete campaigns
+## Phase 3: complete campaigns — complete in 0.9.13
 
 - Darkwood attacks with fifteen eligible raiders after administrator
   authorization and fights through defenders, walls, and buildings.
