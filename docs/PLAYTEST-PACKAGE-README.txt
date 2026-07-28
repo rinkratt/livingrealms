@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.17
+LIVING REALMS WINDOWS PLAYTEST 0.9.18
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -35,6 +35,14 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.18
+- Replaces Elowen's shared prototype body with the supplied magic-girl
+  Blender character as her unique healer/herbalist appearance.
+- Preserves the authored PBR textures, witch hat, clothing, and hair while
+  reducing oversized source textures to a game-safe resolution.
+- Keeps Elowen's existing dialogue, medicine work, tonic trading, movement,
+  targeting, and raid-support behavior.
 
 BUILD 0.9.17
 - Keeps a completely destroyed Stonehaven or Darkwood defeated for fifteen

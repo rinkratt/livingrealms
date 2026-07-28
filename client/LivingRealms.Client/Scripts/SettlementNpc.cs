@@ -686,9 +686,11 @@ public partial class SettlementNpc : CharacterBody3D
 
     private bool TryLoadRealisticCharacter(ResidentVisualProfile profile)
     {
-        var modelPath = profile.Feminine
-            ? "res://Assets/Characters3D/elara.glb"
-            : "res://Assets/Characters3D/alden.glb";
+        var modelPath = ResidentName.Equals("Elowen", StringComparison.OrdinalIgnoreCase)
+            ? "res://Assets/Characters3D/elowen-herbalist.glb"
+            : profile.Feminine
+                ? "res://Assets/Characters3D/elara.glb"
+                : "res://Assets/Characters3D/alden.glb";
         if (!ResourceLoader.Exists(modelPath))
         {
             return false;
@@ -713,7 +715,10 @@ public partial class SettlementNpc : CharacterBody3D
 
         _realisticCharacterModel = model;
         _realisticSkeleton = skeleton;
-        ConfigureRealisticCharacterAppearance(model, profile);
+        if (!ResidentName.Equals("Elowen", StringComparison.OrdinalIgnoreCase))
+        {
+            ConfigureRealisticCharacterAppearance(model, profile);
+        }
         return true;
     }
 
@@ -805,7 +810,11 @@ public partial class SettlementNpc : CharacterBody3D
 
     private void BuildRealisticGuardSword()
     {
-        var attachment = new BoneAttachment3D { Name = "GuardSwordHandAttachment", BoneName = new StringName("hand_r") };
+        var attachment = new BoneAttachment3D
+        {
+            Name = "GuardSwordHandAttachment",
+            BoneName = new StringName(ResolveRealisticBoneName("hand_r"))
+        };
         _realisticSkeleton!.AddChild(attachment);
         _heldSword = new Node3D { Name = "GuardHeldSword", Position = new Vector3(0, 0.09f, 0), Visible = false };
         attachment.AddChild(_heldSword);
@@ -823,7 +832,11 @@ public partial class SettlementNpc : CharacterBody3D
 
     private void BuildRealisticGuardShield(ResidentVisualProfile profile)
     {
-        var attachment = new BoneAttachment3D { Name = "GuardShieldHandAttachment", BoneName = new StringName("hand_l") };
+        var attachment = new BoneAttachment3D
+        {
+            Name = "GuardShieldHandAttachment",
+            BoneName = new StringName(ResolveRealisticBoneName("hand_l"))
+        };
         _realisticSkeleton!.AddChild(attachment);
         var shield = new Node3D { Name = "GuardShield", Position = new Vector3(0.08f, 0, 0.08f) };
         attachment.AddChild(shield);
@@ -835,7 +848,11 @@ public partial class SettlementNpc : CharacterBody3D
 
     private void BuildRealisticRoleProp(ResidentVisualProfile profile)
     {
-        var attachment = new BoneAttachment3D { Name = "ResidentRolePropAttachment", BoneName = new StringName("hand_r") };
+        var attachment = new BoneAttachment3D
+        {
+            Name = "ResidentRolePropAttachment",
+            BoneName = new StringName(ResolveRealisticBoneName("hand_r"))
+        };
         _realisticSkeleton!.AddChild(attachment);
         var prop = new Node3D { Name = $"{Role.Replace(" ", string.Empty)}Prop", Position = new Vector3(0, 0.07f, 0) };
         attachment.AddChild(prop);
@@ -916,7 +933,7 @@ public partial class SettlementNpc : CharacterBody3D
 
     private void SetRealisticBoneDirection(string boneName, Vector3 desiredDirection)
     {
-        var boneIndex = _realisticSkeleton!.FindBone(boneName);
+        var boneIndex = _realisticSkeleton!.FindBone(ResolveRealisticBoneName(boneName));
         if (boneIndex < 0) return;
         var globalRest = _realisticSkeleton.GetBoneGlobalRest(boneIndex);
         var delta = new Quaternion(globalRest.Basis.Y.Normalized(), desiredDirection.Normalized());
@@ -926,8 +943,30 @@ public partial class SettlementNpc : CharacterBody3D
 
     private void SetRealisticBoneRotation(string boneName, Quaternion rotation)
     {
-        var boneIndex = _realisticSkeleton!.FindBone(boneName);
+        var boneIndex = _realisticSkeleton!.FindBone(ResolveRealisticBoneName(boneName));
         if (boneIndex >= 0) _realisticSkeleton.SetBonePoseRotation(boneIndex, rotation.Normalized());
+    }
+
+    private string ResolveRealisticBoneName(string canonicalName)
+    {
+        if (!IsInstanceValid(_realisticSkeleton) || _realisticSkeleton!.FindBone(canonicalName) >= 0)
+        {
+            return canonicalName;
+        }
+
+        var rigifyName = canonicalName switch
+        {
+            "hand_l" => "DEF-hand.L",
+            "hand_r" => "DEF-hand.R",
+            "upperarm_l" => "DEF-upper_arm.L",
+            "upperarm_r" => "DEF-upper_arm.R",
+            "thigh_l" => "DEF-thigh.L",
+            "thigh_r" => "DEF-thigh.R",
+            "calf_l" => "DEF-shin.L",
+            "calf_r" => "DEF-shin.R",
+            _ => canonicalName
+        };
+        return _realisticSkeleton.FindBone(rigifyName) >= 0 ? rigifyName : canonicalName;
     }
 
     private static T? FindDescendant<T>(Node root) where T : Node
