@@ -1,0 +1,142 @@
+name: Build Windows playtest release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic version without the v prefix"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  windows-playtest:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      GODOT_VERSION: "4.7.1"
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Resolve release version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ inputs.version }}"
+          } else {
+            $version = "${{ github.ref_name }}".TrimStart("v")
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "Invalid release version: $version"
+          }
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install Godot .NET and export templates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $toolRoot = Join-Path $env:RUNNER_TEMP "godot"
+          $godotZip = Join-Path $env:RUNNER_TEMP "godot.zip"
+          $templatePack = Join-Path $env:RUNNER_TEMP "godot-templates.tpz"
+          $releaseBase = "https://github.com/godotengine/godot-builds/releases/download/$env:GODOT_VERSION-stable"
+
+          Invoke-WebRequest "$releaseBase/Godot_v$env:GODOT_VERSION-stable_mono_win64.zip" -OutFile $godotZip
+          Expand-Archive -LiteralPath $godotZip -DestinationPath $toolRoot
+          $godotConsole = Get-ChildItem -LiteralPath $toolRoot -Recurse -File -Filter "*_console.exe" |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $godotConsole) {
+            throw "Godot console executable was not found."
+          }
+          "GODOT_CONSOLE=$godotConsole" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          Invoke-WebRequest "$releaseBase/Godot_v$env:GODOT_VERSION-stable_mono_export_templates.tpz" -OutFile $templatePack
+          $templateExtract = Join-Path $env:RUNNER_TEMP "godot-template-extract"
+          Expand-Archive -LiteralPath $templatePack -DestinationPath $templateExtract
+          foreach ($templateName in @("$env:GODOT_VERSION.stable", "$env:GODOT_VERSION.stable.mono")) {
+            $templateTarget = Join-Path $env:APPDATA "Godot\export_templates\$templateName"
+            New-Item -ItemType Directory -Path $templateTarget -Force | Out-Null
+            Copy-Item -Path (Join-Path $templateExtract "templates\*") -Destination $templateTarget -Recurse -Force
+          }
+
+      - name: Restore and test managed projects
+        shell: pwsh
+        run: |
+          dotnet restore LivingRealms.slnx
+          dotnet test LivingRealms.slnx --configuration Debug --no-restore
+
+      - name: Import Godot assets
+        shell: pwsh
+        run: |
+          & $env:GODOT_CONSOLE --headless --path client/LivingRealms.Client --import
+          if ($LASTEXITCODE -ne 0) {
+            throw "Godot asset import failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Export Windows playtest
+        shell: pwsh
+        run: |
+          $exportDirectory = Join-Path $env:GITHUB_WORKSPACE "artifacts\playtest\windows"
+          New-Item -ItemType Directory -Path $exportDirectory -Force | Out-Null
+          $exportPath = Join-Path $exportDirectory "LivingRealms.exe"
+          & $env:GODOT_CONSOLE --headless --path client/LivingRealms.Client --export-release "Windows Playtest" $exportPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Godot export failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Package and verify Windows ZIP
+        shell: pwsh
+        run: |
+          $notes = @(
+            "Elowen now uses the supplied detailed magic-girl Blender character as her unique healer and herbalist appearance.",
+            "The source PBR textures are optimized for playtest performance and download size.",
+            "Elowen retains her existing movement, dialogue, herb staff, tonic trading, medicine work, and raid-support behavior."
+          )
+          $result = & .\tools\package_windows_playtest.ps1 `
+            -Version $env:RELEASE_VERSION `
+            -ReleaseName "elowen-herbalist" `
+            -Notes $notes
+
+          $zip = $result.Package
+          $manifest = $result.Manifest
+          $checksum = Join-Path (Split-Path -Parent $zip) "LivingRealms-Playtest-Windows.sha256.txt"
+          if (-not (Test-Path -LiteralPath $zip) -or -not (Test-Path -LiteralPath $manifest)) {
+            throw "Release package or manifest was not generated."
+          }
+          "RELEASE_ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_MANIFEST=$manifest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_CHECKSUM=$checksum" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          @"
+          Build $env:RELEASE_VERSION adds the supplied magic-girl character as Elowen, Stonehaven's healer and herbalist.
+
+          - Unique optimized PBR character and Rigify skeleton
+          - Existing healer dialogue, tonic trading, medicine work, and raid support retained
+          - Full portable Windows playtest ZIP with checksum and update manifest
+          "@ | Set-Content -LiteralPath release-notes.md
+
+          gh release create $env:RELEASE_TAG `
+            $env:RELEASE_ZIP `
+            $env:RELEASE_MANIFEST `
+            $env:RELEASE_CHECKSUM `
+            --repo $env:GITHUB_REPOSITORY `
+            --title "Living Realms $env:RELEASE_VERSION" `
+            --notes-file release-notes.md `
+            --verify-tag
