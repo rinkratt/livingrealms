@@ -77,6 +77,52 @@ jobs:
           dotnet restore LivingRealms.slnx
           dotnet test LivingRealms.slnx --configuration Debug --no-restore
 
+      - name: Publish Linux server packages
+        shell: pwsh
+        run: |
+          $serverRoot = Join-Path $env:GITHUB_WORKSPACE "artifacts\server"
+          $apiDirectory = Join-Path $serverRoot "api"
+          $workerDirectory = Join-Path $serverRoot "worker"
+          New-Item -ItemType Directory -Path $apiDirectory, $workerDirectory -Force | Out-Null
+
+          dotnet publish src/LivingRealms.Api/LivingRealms.Api.csproj `
+            --configuration Release `
+            --runtime linux-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            --output $apiDirectory
+          if ($LASTEXITCODE -ne 0) {
+            throw "API publish failed with exit code $LASTEXITCODE."
+          }
+
+          dotnet publish src/LivingRealms.Worker/LivingRealms.Worker.csproj `
+            --configuration Release `
+            --runtime linux-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            --output $workerDirectory
+          if ($LASTEXITCODE -ne 0) {
+            throw "Worker publish failed with exit code $LASTEXITCODE."
+          }
+
+          $apiPackage = Join-Path $serverRoot "LivingRealms-Api-linux-x64-$env:RELEASE_VERSION.tar.gz"
+          $workerPackage = Join-Path $serverRoot "LivingRealms-Worker-linux-x64-$env:RELEASE_VERSION.tar.gz"
+          tar -czf $apiPackage -C $apiDirectory .
+          if ($LASTEXITCODE -ne 0) {
+            throw "API archive creation failed with exit code $LASTEXITCODE."
+          }
+          tar -czf $workerPackage -C $workerDirectory .
+          if ($LASTEXITCODE -ne 0) {
+            throw "Worker archive creation failed with exit code $LASTEXITCODE."
+          }
+
+          "SERVER_API_PACKAGE=$apiPackage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "SERVER_WORKER_PACKAGE=$workerPackage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Import Godot assets
         shell: pwsh
         run: |
@@ -108,14 +154,14 @@ jobs:
         shell: pwsh
         run: |
           $notes = @(
-            "Elowen is normalized to the established player and NPC scale.",
-            "B1 farmhouses now use the supplied medieval-house model.",
-            "Supplied rocks, trees, bushes, and grass replace placeholder environment art.",
-            "All imported assets pass a meter-based game-scale validation before release."
+            "Food shortages now recruit the workers each settlement needs.",
+            "Stonehaven and Darkwood target a positive food surplus before growing.",
+            "Normal population growth cannot immediately recreate a shortage.",
+            "Server API and worker packages are published with the Windows client."
           )
           $result = & .\tools\package_windows_playtest.ps1 `
             -Version $env:RELEASE_VERSION `
-            -ReleaseName "world-scale-environment" `
+            -ReleaseName "sustainable-settlements" `
             -Notes $notes
 
           $zip = $result.Package
@@ -134,19 +180,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           @"
-          Build $env:RELEASE_VERSION upgrades the Living Realms environment while enforcing consistent world scale.
+          Build $env:RELEASE_VERSION upgrades the Living Realms settlement economy so both factions can recover from food shortages and grow sustainably.
 
-          - Elowen normalized to the established character height
-          - Detailed supplied medieval farmhouses in B1
-          - Optimized supplied rocks, trees, bushes, and grass
-          - Meter-based scale validation for future imported assets
-          - Full portable Windows playtest ZIP with checksum and update manifest
+          - Stonehaven recruits farmers, fishers, or hunters when food production falls behind
+          - Darkwood recruits additional clan hunters when needed
+          - Settlements maintain a food surplus before adding ordinary population
+          - Recruitment pauses during active battles
+          - Matching Windows client, Linux API, and Linux worker packages
           "@ | Set-Content -LiteralPath release-notes.md
 
           gh release create $env:RELEASE_TAG `
             $env:RELEASE_ZIP `
             $env:RELEASE_MANIFEST `
             $env:RELEASE_CHECKSUM `
+            $env:SERVER_API_PACKAGE `
+            $env:SERVER_WORKER_PACKAGE `
             --repo $env:GITHUB_REPOSITORY `
             --title "Living Realms $env:RELEASE_VERSION" `
             --notes-file release-notes.md `
