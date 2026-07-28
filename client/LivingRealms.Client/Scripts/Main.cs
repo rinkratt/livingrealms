@@ -13,6 +13,8 @@ public partial class Main : Control
 {
     private const string ClientVersion = BuildInfo.Version;
     private const string UpdateManifestUrl = "https://living-realms.com/downloads/windows-version.json";
+    private const string PendingPositionSavePath = "user://pending-position-save.json";
+    private static readonly TimeSpan QuitSaveDeadline = TimeSpan.FromSeconds(3);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -617,6 +619,9 @@ public partial class Main : Control
             return;
         }
 
+        RememberCharacter(selected);
+        ShowCharacter(selected);
+        selected = await ReplayPendingPositionSaveAsync(selected);
         RememberCharacter(selected);
         ShowCharacter(selected);
         _realmStatus.Text = $"{selected.Name} loaded from the saved position.";
@@ -1940,13 +1945,118 @@ public partial class Main : Control
 
     private async void SaveWorldAndQuitAsync()
     {
-        if (_world is not null)
+        var world = _world;
+        var character = _selectedCharacter;
+        if (world is not null && character is not null)
         {
-            _world.SetSaveStatus("Saving before closing...", false);
-            _ = await SaveWorldPositionAsync(_world.PlayerPosition);
+            var position = SanitizeNetworkPosition(world.PlayerPosition);
+            PersistPendingPositionSave(character, position);
+            world.SetSaveStatus("Saving before closing (maximum 3 seconds)...", false);
+            using var cancellation = new CancellationTokenSource(QuitSaveDeadline);
+            var payload = JsonSerializer.Serialize(new PositionRequest(position.X, position.Y, position.Z));
+            var response = await SendAsync(
+                $"/api/v1/characters/{character.Id:D}/position",
+                Godot.HttpClient.Method.Put,
+                payload,
+                authenticated: true,
+                cancellation.Token);
+            if (response.IsSuccess)
+            {
+                DeletePendingPositionSave();
+            }
         }
 
         GetTree().Quit();
+    }
+
+    private async Task<CharacterResponse> ReplayPendingPositionSaveAsync(CharacterResponse selected)
+    {
+        PendingPositionSave? pending;
+        try
+        {
+            var path = ProjectSettings.GlobalizePath(PendingPositionSavePath);
+            if (!File.Exists(path))
+            {
+                return selected;
+            }
+            pending = JsonSerializer.Deserialize<PendingPositionSave>(
+                await File.ReadAllTextAsync(path),
+                JsonOptions);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            GD.PushWarning($"The pending position save could not be read: {exception.Message}");
+            DeletePendingPositionSave();
+            return selected;
+        }
+
+        if (pending is null || pending.CharacterId != selected.Id)
+        {
+            return selected;
+        }
+
+        var position = SanitizeNetworkPosition(new Vector3(pending.X, pending.Y, pending.Z));
+        var payload = JsonSerializer.Serialize(new PositionRequest(position.X, position.Y, position.Z));
+        using var cancellation = new CancellationTokenSource(QuitSaveDeadline);
+        var response = await SendAsync(
+            $"/api/v1/characters/{selected.Id:D}/position",
+            Godot.HttpClient.Method.Put,
+            payload,
+            authenticated: true,
+            cancellation.Token);
+        if (!response.IsSuccess)
+        {
+            return selected;
+        }
+
+        var restored = JsonSerializer.Deserialize<CharacterResponse>(response.Body, JsonOptions);
+        if (restored is null)
+        {
+            return selected;
+        }
+        DeletePendingPositionSave();
+        return restored;
+    }
+
+    private static void PersistPendingPositionSave(CharacterResponse character, Vector3 position)
+    {
+        try
+        {
+            var path = ProjectSettings.GlobalizePath(PendingPositionSavePath);
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+            var pending = new PendingPositionSave(
+                character.Id,
+                character.Name,
+                position.X,
+                position.Y,
+                position.Z,
+                DateTimeOffset.UtcNow);
+            File.WriteAllText(path, JsonSerializer.Serialize(pending));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            GD.PushWarning($"The emergency local position save could not be written: {exception.Message}");
+        }
+    }
+
+    private static void DeletePendingPositionSave()
+    {
+        try
+        {
+            var path = ProjectSettings.GlobalizePath(PendingPositionSavePath);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            GD.PushWarning($"The completed pending position save could not be removed: {exception.Message}");
+        }
     }
 
     private void ExitWorldToCharacterSelection()
@@ -1995,7 +2105,8 @@ public partial class Main : Control
         string path,
         Godot.HttpClient.Method method,
         string body,
-        bool authenticated)
+        bool authenticated,
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -2012,11 +2123,11 @@ public partial class Main : Control
                 request.Content = new NetStringContent(body, Encoding.UTF8, "application/json");
             }
 
-            using var response = await _apiClient.SendAsync(request);
-            var responseBody = await response.Content.ReadAsStringAsync();
+            using var response = await _apiClient.SendAsync(request, cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             return new ApiResponse((long)response.StatusCode, responseBody);
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException)
         {
             return new ApiResponse(0, "The Living Realms server request timed out.");
         }
@@ -2160,6 +2271,13 @@ public partial class Main : Control
 
     private sealed record CredentialsRequest(string Email, string Password);
     private sealed record PositionRequest(float X, float Y, float Z);
+    private sealed record PendingPositionSave(
+        Guid CharacterId,
+        string CharacterName,
+        float X,
+        float Y,
+        float Z,
+        DateTimeOffset SavedAt);
     private sealed record CreaturePositionRequest(Guid Id, float X, float Y, float Z);
     private sealed record CreaturePositionsRequest(IReadOnlyCollection<CreaturePositionRequest> Creatures);
     private sealed record CombatRequest(

@@ -22,6 +22,7 @@ $partialZipPath = "$zipPath.partial"
 $manifestDirectory = Join-Path $releaseDirectory 'site\downloads'
 $manifestPath = Join-Path $manifestDirectory 'windows-version.json'
 $checksumPath = Join-Path $releaseDirectory 'LivingRealms-Playtest-Windows.sha256.txt'
+$verificationDirectory = Join-Path $releaseDirectory 'zip-full-extraction-test'
 
 $artifactsRoot = [IO.Path]::GetFullPath((Join-Path $repositoryRoot 'artifacts'))
 $resolvedRelease = [IO.Path]::GetFullPath($releaseDirectory)
@@ -80,6 +81,60 @@ finally {
     $archive.Dispose()
 }
 
+# A valid central directory alone does not prove that Windows can extract every
+# compressed payload. Perform a complete extraction, compare every staged file
+# byte-for-byte by SHA-256, and verify the executable/package signatures before
+# a release is allowed to publish.
+if (Test-Path -LiteralPath $verificationDirectory) {
+    Remove-Item -LiteralPath $verificationDirectory -Recurse -Force
+}
+[IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $verificationDirectory)
+
+$stageFiles = Get-ChildItem -LiteralPath $stageDirectory -File -Recurse
+$extractedFiles = Get-ChildItem -LiteralPath $verificationDirectory -File -Recurse
+$stageRootWithSeparator = $stageDirectory.TrimEnd(
+    [IO.Path]::DirectorySeparatorChar,
+    [IO.Path]::AltDirectorySeparatorChar
+) + [IO.Path]::DirectorySeparatorChar
+if ($stageFiles.Count -ne $extractedFiles.Count) {
+    throw "Full extraction produced $($extractedFiles.Count) files; $($stageFiles.Count) were staged."
+}
+foreach ($sourceFile in $stageFiles) {
+    if (-not $sourceFile.FullName.StartsWith($stageRootWithSeparator, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Staged file escaped the expected Windows package directory: $($sourceFile.FullName)"
+    }
+    $relativePath = $sourceFile.FullName.Substring($stageRootWithSeparator.Length)
+    $extractedPath = Join-Path $verificationDirectory $relativePath
+    if (-not (Test-Path -LiteralPath $extractedPath -PathType Leaf)) {
+        throw "Full extraction is missing $relativePath"
+    }
+    $extractedFile = Get-Item -LiteralPath $extractedPath
+    if ($sourceFile.Length -ne $extractedFile.Length) {
+        throw "Extracted size mismatch for $relativePath"
+    }
+    $sourceHash = (Get-FileHash -LiteralPath $sourceFile.FullName -Algorithm SHA256).Hash
+    $extractedHash = (Get-FileHash -LiteralPath $extractedPath -Algorithm SHA256).Hash
+    if ($sourceHash -ne $extractedHash) {
+        throw "Extracted content mismatch for $relativePath"
+    }
+}
+
+$verifiedExe = Join-Path $verificationDirectory 'LivingRealms.exe'
+$exeStream = [IO.File]::OpenRead($verifiedExe)
+try {
+    if ($exeStream.ReadByte() -ne 0x4D -or $exeStream.ReadByte() -ne 0x5A) {
+        throw 'The extracted LivingRealms.exe does not have a valid Windows executable signature.'
+    }
+}
+finally {
+    $exeStream.Dispose()
+}
+$verifiedPck = Get-Item -LiteralPath (Join-Path $verificationDirectory 'LivingRealms.pck')
+if ($verifiedPck.Length -lt 1MB) {
+    throw "The extracted LivingRealms.pck is unexpectedly small: $($verifiedPck.Length) bytes"
+}
+Remove-Item -LiteralPath $verificationDirectory -Recurse -Force
+
 $zipItem = Get-Item -LiteralPath $zipPath
 $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
 "$hash  $zipName" | Set-Content -LiteralPath $checksumPath -Encoding ascii
@@ -102,5 +157,6 @@ $manifestJson = $manifest | ConvertTo-Json -Depth 4
     SizeBytes = $zipItem.Length
     Sha256 = $hash
     Entries = $entryNames.Count
+    ExtractedFilesVerified = $stageFiles.Count
     Manifest = $manifestPath
 }

@@ -154,14 +154,15 @@ jobs:
         shell: pwsh
         run: |
           $notes = @(
-            "Food shortages now recruit the workers each settlement needs.",
-            "Stonehaven and Darkwood target a positive food surplus before growing.",
-            "Normal population growth cannot immediately recreate a shortage.",
-            "Server API and worker packages are published with the Windows client."
+            "Imported nature and buildings are grounded and kept clear of roads and projects.",
+            "Stonehaven has a new east gate and Irondeep traffic no longer enters Mirrorwater.",
+            "Farmers, fishers, miners, masons, carpenters, and lumber crews visibly work their routes.",
+            "Gray Blender masonry, improved crops, quarry props, lake depth, and cleaner labels update the valley.",
+            "The Windows ZIP is fully extracted and hash-verified before publication."
           )
           $result = & .\tools\package_windows_playtest.ps1 `
             -Version $env:RELEASE_VERSION `
-            -ReleaseName "sustainable-settlements" `
+            -ReleaseName "living-settlements" `
             -Notes $notes
 
           $zip = $result.Package
@@ -180,12 +181,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           @"
-          Build $env:RELEASE_VERSION upgrades the Living Realms settlement economy so both factions can recover from food shortages and grow sustainably.
+          Build $env:RELEASE_VERSION makes Stonehaven and its surrounding work districts read as a functioning settlement.
 
-          - Stonehaven recruits farmers, fishers, or hunters when food production falls behind
-          - Darkwood recruits additional clan hunters when needed
-          - Settlements maintain a food surplus before adding ordinary population
-          - Recruitment pauses during active battles
+          - Grounded, collision-safe nature and imported structures
+          - A second Stonehaven gate and corrected lake/mine road network
+          - Visible role-specific work routes for food and construction workers
+          - New gray-stone Blender wall modules, crops, quarry props, and lake detail
+          - Fast shutdown with a replayable emergency local position save
+          - Full extraction and content verification for the Windows ZIP
           - Matching Windows client, Linux API, and Linux worker packages
           "@ | Set-Content -LiteralPath release-notes.md
 

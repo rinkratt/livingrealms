@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.19
+LIVING REALMS WINDOWS PLAYTEST 0.9.21
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -21,6 +21,19 @@ CURRENT PLAYTEST SCOPE
 - Multiple separate player accounts: yes.
 - Players visible to one another in real time: not yet.
 
+BUILD 0.9.21
+
+- Grounds imported trees, rocks, bushes, houses, and wall pieces at world scale.
+- Keeps natural props clear of roads, settlements, projects, and one another.
+- Adds an east Stonehaven gate and reroutes Irondeep traffic south of Mirrorwater.
+- Replaces the flat wall boxes with authored gray-stone Blender masonry.
+- Adds visible farmer, fisherman, miner, mason, carpenter, and lumber crew routes.
+- Improves crops, quarry work areas, ore sorting, lake depth, and water ripples.
+- Corrects Elowen's staff placement and hides unnecessary permanent area labels.
+- Limits the final server save to three seconds and replays any pending position
+  save at the next login.
+- Fully extracts and hashes every ZIP payload before publication.
+
 IMPORTANT CONTROLS
 - WASD / arrows: move
 - Mouse: camera
@@ -35,6 +48,22 @@ IMPORTANT CONTROLS
 - F10: release or recapture the mouse without pausing the realm
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
+
+BUILD 0.9.21
+
+- Farmers, fishers, miners, quarry workers, lumberjacks, masons, and
+  carpenters now visibly travel through job-specific work routes.
+- Stonehaven keeps two permanent farmers and one permanent fisherman so
+  its starting food economy can sustain and grow the settlement.
+- Roads, mine props, farm crops, trees, bushes, rocks, and grass have been
+  cleaned up to avoid floating or overlapping placement.
+- Stonehaven uses a new gray Blender-authored stone wall kit with an east
+  gate so the regional road remains usable as the wall is completed.
+- Area labels are hidden unless they communicate an active interaction.
+- Quitting now has a short save deadline and safely retries an unfinished
+  position save on the next login.
+- Release packaging is fully extracted and every file is SHA-256 verified
+  before the ZIP can be published.
 
 BUILD 0.9.19
 

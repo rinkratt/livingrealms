@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $playerAccess = player_access();
-$downloadPath = dirname(__DIR__) . '/downloads/LivingRealms-Playtest-Windows-0.9.19.zip';
+$downloadPath = dirname(__DIR__) . '/downloads/LivingRealms-Playtest-Windows-0.9.21.zip';
 $downloadReady = is_file($downloadPath);
 $downloadSize = $downloadReady ? number_format((float)filesize($downloadPath) / 1048576, 1) . ' MB' : null;
 promo_start(
@@ -75,12 +75,12 @@ promo_start(
 ?>
 <section class="section"><div class="section-inner signup-layout">
 <div>
-<p class="eyebrow">Build 0.9.19</p><h2>A shared world is waiting.</h2>
+<p class="eyebrow">Build 0.9.21</p><h2>A shared world is waiting.</h2>
 <p class="lead">Construction, inventory, gathering, combat, and character progress are saved on the live Living Realms server.</p>
 <p>Multiple testers can use separate accounts and affect the same world. This build does not yet display other players in real time; live player presence and synchronized multiplayer combat are a later networking step.</p>
 <h3>Installation</h3><ol><li>Create a free player account or sign in on this page.</li><li>Download the Windows ZIP.</li><li>Extract the entire ZIP to a writable folder.</li><li>Keep all extracted files together and run <strong>LivingRealms.exe</strong>.</li><li>Sign in to the game with the same email and password.</li></ol>
-<h3>What changed in 0.9.19</h3><p>Elowen is now correctly matched to the established character scale. B1 has detailed medieval farmhouses, while supplied mossy rocks, trees, bushes, and grass replace the old placeholder environment art. A meter-based scale check now guards future imports.</p>
-<h3>Automatic updates</h3><p>Build 0.9.19 checks for future builds when it starts. New packages are downloaded from living-realms.com, checksum-verified, installed, and relaunched automatically.</p>
+<h3>What changed in 0.9.21</h3><p>Settlement workers now follow visible job routes, Stonehaven has dependable permanent farmers and a fisherman, roads and environmental overlaps are cleaned up, and the city has a new gray stone wall with a second usable gate. The client also closes promptly and safely retries a pending position save at the next login.</p>
+<h3>Automatic updates</h3><p>Build 0.9.21 checks for future builds when it starts. New packages are downloaded from living-realms.com, checksum-verified, installed, and relaunched automatically.</p>
 <h3>Sharing screenshots</h3><p>Press <strong>F12</strong> while playing to save a PNG in <strong>Pictures\Living Realms</strong>. Press <strong>F10</strong> to release or recapture the mouse without pausing the realm.</p>
 <p class="form-note">Early playtest builds are not yet code-signed, so Windows may display an unrecognized-app warning. Only use the package from living-realms.com.</p>
 </div>

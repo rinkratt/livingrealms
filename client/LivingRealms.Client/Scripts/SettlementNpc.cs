@@ -34,6 +34,10 @@ public partial class SettlementNpc : CharacterBody3D
     private Vector3 _ambientTargetPosition;
     private float _ambientPauseSeconds;
     private float _resourceWorkCooldown;
+    private IReadOnlyList<Vector3> _workerRoute = [];
+    private int _workerRouteWaypoint;
+    private float _workerTaskPauseSeconds;
+    private string _workerRouteRole = string.Empty;
     private bool _showDetailedOverhead;
     private bool _hasAmbientTarget;
     private int _guardPatrolWaypoint;
@@ -222,6 +226,7 @@ public partial class SettlementNpc : CharacterBody3D
         Activity = data.Activity;
         Dialogue = data.Dialogue;
         _scheduledTargetPosition = _pathfinder.GetNearestWalkablePosition(data.Position);
+        RefreshWorkerRoute();
         if (HorizontalDistance(previousScheduledTarget, _scheduledTargetPosition) > 0.9f)
         {
             _hasAmbientTarget = false;
@@ -426,6 +431,11 @@ public partial class SettlementNpc : CharacterBody3D
             UpdateGuardPatrolDestination(seconds);
             return;
         }
+        if (IsVisibleWorker && IsWorkingActivity)
+        {
+            UpdateWorkerTaskDestination(seconds);
+            return;
+        }
 
         var patrolRadius = CanFight ? 4.2f : Role == "Villager" ? 3.0f : 2.4f;
         if (_hasAmbientTarget)
@@ -466,7 +476,108 @@ public partial class SettlementNpc : CharacterBody3D
     private bool IsGuard => Role.Contains("Guard", StringComparison.OrdinalIgnoreCase);
     private bool IsResourceWorker =>
         Role.Equals("Lumberjack", StringComparison.OrdinalIgnoreCase) ||
-        Role.Equals("Quarry Worker", StringComparison.OrdinalIgnoreCase);
+        Role.Equals("Quarry Worker", StringComparison.OrdinalIgnoreCase) ||
+        Role.Equals("Iron Miner", StringComparison.OrdinalIgnoreCase);
+    private bool IsVisibleWorker =>
+        IsResourceWorker ||
+        Role.Equals("Farmer", StringComparison.OrdinalIgnoreCase) ||
+        Role.Equals("Fisher", StringComparison.OrdinalIgnoreCase) ||
+        Role.Equals("Mason", StringComparison.OrdinalIgnoreCase) ||
+        Role.Equals("Carpenter", StringComparison.OrdinalIgnoreCase);
+    private bool IsWorkingActivity =>
+        Activity.Contains("work", StringComparison.OrdinalIgnoreCase) ||
+        Activity.Contains("farm", StringComparison.OrdinalIgnoreCase) ||
+        Activity.Contains("fish", StringComparison.OrdinalIgnoreCase) ||
+        Activity.Contains("mine", StringComparison.OrdinalIgnoreCase) ||
+        Activity.Contains("quarry", StringComparison.OrdinalIgnoreCase) ||
+        Activity.Contains("timber", StringComparison.OrdinalIgnoreCase) ||
+        Activity.Contains("harvest", StringComparison.OrdinalIgnoreCase);
+
+    private void RefreshWorkerRoute()
+    {
+        if (!IsVisibleWorker)
+        {
+            _workerRoute = [];
+            _workerRouteRole = string.Empty;
+            return;
+        }
+        if (_workerRouteRole.Equals(Role, StringComparison.OrdinalIgnoreCase) && _workerRoute.Count > 0)
+        {
+            return;
+        }
+
+        var lane = ResidentId.ToByteArray()[2] % 2 == 0 ? -1.0f : 1.0f;
+        _workerRoute = Role switch
+        {
+            "Farmer" =>
+            [
+                _scheduledTargetPosition + new Vector3(-5.2f, 0, -5.4f),
+                _scheduledTargetPosition + new Vector3(0, 0, -5.4f),
+                _scheduledTargetPosition + new Vector3(5.2f, 0, -5.4f),
+                _scheduledTargetPosition + new Vector3(5.2f, 0, 5.4f),
+                _scheduledTargetPosition + new Vector3(0, 0, 5.4f),
+                _scheduledTargetPosition + new Vector3(-5.2f, 0, 5.4f)
+            ],
+            "Fisher" =>
+            [
+                new Vector3(70.5f, 0.40f, -20.0f),
+                new Vector3(78.0f, 0.40f, -20.0f),
+                new Vector3(86.0f, 0.40f, -20.0f),
+                new Vector3(93.0f, 0.40f, -20.0f),
+                new Vector3(67.5f, 0.08f, -26.0f)
+            ],
+            "Iron Miner" or "Quarry Worker" or "Mason" =>
+            [
+                new Vector3(108.0f, 0.08f, -113.0f),
+                new Vector3(114.0f, 0.08f, -108.0f),
+                new Vector3(116.0f, 0.08f, -98.0f),
+                new Vector3(108.0f, 0.08f, -91.0f),
+                new Vector3(99.0f, 0.08f, -96.0f),
+                new Vector3(101.0f, 0.08f, -108.0f)
+            ],
+            "Lumberjack" or "Carpenter" =>
+            [
+                _scheduledTargetPosition + new Vector3(-3.8f, 0, -2.8f),
+                _scheduledTargetPosition + new Vector3(3.6f, 0, -2.4f),
+                _scheduledTargetPosition + new Vector3(4.0f, 0, 3.2f),
+                _scheduledTargetPosition + new Vector3(-3.2f, 0, 3.4f)
+            ],
+            _ => [_scheduledTargetPosition + new Vector3(lane * 2.0f, 0, 0)]
+        };
+        _workerRoute = _workerRoute
+            .Select(point => _pathfinder.GetNearestWalkablePosition(point))
+            .ToArray();
+        _workerRouteRole = Role;
+        _workerRouteWaypoint = ResidentId.ToByteArray()[3] % Math.Max(1, _workerRoute.Count);
+        _workerTaskPauseSeconds = _ambientRandom.RandfRange(0.4f, 1.6f);
+        _hasAmbientTarget = false;
+    }
+
+    private void UpdateWorkerTaskDestination(float seconds)
+    {
+        if (_workerRoute.Count == 0)
+        {
+            return;
+        }
+        if (_hasAmbientTarget)
+        {
+            if (HorizontalDistance(GlobalPosition, _ambientTargetPosition) <= 0.82f)
+            {
+                _hasAmbientTarget = false;
+                _workerTaskPauseSeconds = _ambientRandom.RandfRange(1.8f, 4.2f);
+                _workerRouteWaypoint = (_workerRouteWaypoint + 1) % _workerRoute.Count;
+            }
+            return;
+        }
+
+        _workerTaskPauseSeconds = Mathf.Max(0, _workerTaskPauseSeconds - seconds);
+        if (_workerTaskPauseSeconds > 0)
+        {
+            return;
+        }
+        _ambientTargetPosition = _pathfinder.GetNearestWalkablePosition(_workerRoute[_workerRouteWaypoint]);
+        _hasAmbientTarget = true;
+    }
 
     private void UpdateGuardPatrolDestination(float seconds)
     {
@@ -855,6 +966,20 @@ public partial class SettlementNpc : CharacterBody3D
 
     private void BuildRealisticRoleProp(ResidentVisualProfile profile)
     {
+        if (Role == "Healer")
+        {
+            // The imported herbalist has a different hand-bone orientation than
+            // the Alden/Elara rigs. Keep the staff upright beside her hand so it
+            // never passes through her wrist, shoulder, or head.
+            var staff = new Node3D { Name = "HealerStaffProp" };
+            _visualRoot.AddChild(staff);
+            AddRigPart(staff, "HealerStaff", new CylinderMesh { TopRadius = 0.025f, BottomRadius = 0.04f, Height = 1.48f, RadialSegments = 14 },
+                new Vector3(0.48f, 0.78f, -0.08f), new Color("654225"), roughness: 0.58f);
+            AddRigPart(staff, "HealerHerb", new SphereMesh { Radius = 0.10f, Height = 0.16f, RadialSegments = 18, Rings = 10 },
+                new Vector3(0.48f, 1.56f, -0.08f), new Color("6f8d4f"), roughness: 0.90f);
+            return;
+        }
+
         var attachment = new BoneAttachment3D
         {
             Name = "ResidentRolePropAttachment",
@@ -871,11 +996,22 @@ public partial class SettlementNpc : CharacterBody3D
                 AddRigPart(prop, "SmithHammerHead", new BoxMesh { Size = new Vector3(0.26f, 0.16f, 0.16f) },
                     new Vector3(0.57f, 0, 0), new Color("666b6d"), metallic: 0.84f, roughness: 0.28f);
                 break;
-            case "Healer":
-                AddRigPart(prop, "HealerStaff", new CylinderMesh { TopRadius = 0.025f, BottomRadius = 0.04f, Height = 1.45f, RadialSegments = 14 },
-                    new Vector3(0.54f, 0, 0), new Color("654225"), rotation: new Vector3(0, 0, -Mathf.Pi / 2), roughness: 0.58f);
-                AddRigPart(prop, "HealerHerb", new SphereMesh { Radius = 0.10f, Height = 0.16f, RadialSegments = 18, Rings = 10 },
-                    new Vector3(1.27f, 0, 0), new Color("6f8d4f"), roughness: 0.90f);
+            case "Farmer":
+                AddRigPart(prop, "FarmerToolHandle", new CylinderMesh { TopRadius = 0.025f, BottomRadius = 0.035f, Height = 0.72f, RadialSegments = 12 },
+                    new Vector3(0.22f, 0, 0), new Color("654225"), rotation: new Vector3(0, 0, -Mathf.Pi / 2), roughness: 0.68f);
+                AddRigPart(prop, "FarmerSickle", new TorusMesh { InnerRadius = 0.10f, OuterRadius = 0.22f, Rings = 16, RingSegments = 8 },
+                    new Vector3(0.62f, 0, 0), new Color("92999b"), metallic: 0.78f, roughness: 0.30f);
+                break;
+            case "Fisher":
+                AddRigPart(prop, "FishingRod", new CylinderMesh { TopRadius = 0.012f, BottomRadius = 0.027f, Height = 1.65f, RadialSegments = 10 },
+                    new Vector3(0.73f, 0, 0), new Color("5c3b22"), rotation: new Vector3(0, 0, -Mathf.Pi / 2), roughness: 0.72f);
+                break;
+            case "Iron Miner":
+            case "Quarry Worker":
+                AddRigPart(prop, "PickHandle", new CylinderMesh { TopRadius = 0.026f, BottomRadius = 0.038f, Height = 0.88f, RadialSegments = 12 },
+                    new Vector3(0.30f, 0, 0), new Color("5c3820"), rotation: new Vector3(0, 0, -Mathf.Pi / 2), roughness: 0.65f);
+                AddRigPart(prop, "PickHead", new BoxMesh { Size = new Vector3(0.12f, 0.08f, 0.58f) },
+                    new Vector3(0.76f, 0, 0), new Color("676c6e"), metallic: 0.82f, roughness: 0.30f);
                 break;
             case "Innkeeper":
                 AddRigPart(prop, "Tankard", new CylinderMesh { TopRadius = 0.10f, BottomRadius = 0.11f, Height = 0.24f, RadialSegments = 18 },

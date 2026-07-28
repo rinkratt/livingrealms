@@ -68,6 +68,11 @@ const ENVIRONMENT_ASSETS := {
 		"minimum": Vector3(0.5, 0.3, 0.5),
 		"maximum": Vector3(3.0, 2.0, 3.0),
 	},
+	"Stonehaven Stone Wall": {
+		"path": "res://Assets/Environment/Production/stonehaven-stone-wall.glb",
+		"minimum": Vector3(3.7, 2.3, 0.7),
+		"maximum": Vector3(4.3, 2.8, 1.2),
+	},
 }
 
 
