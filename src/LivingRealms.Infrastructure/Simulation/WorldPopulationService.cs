@@ -272,6 +272,68 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         }
     }
 
+    public async Task<FoodWorkerRecoveryResult> RecruitFoodWorkersForSustainabilityAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var battleIsActive =
+            await database.SettlementRaids.AnyAsync(
+                x => x.Status == SettlementRaidStatus.Active,
+                cancellationToken) ||
+            await database.StonehavenAssaults.AnyAsync(
+                x => x.Status == StonehavenAssaultStatus.Assembling ||
+                     x.Status == StonehavenAssaultStatus.Marching ||
+                     x.Status == StonehavenAssaultStatus.FightingGoblins ||
+                     x.Status == StonehavenAssaultStatus.AttackingCamp,
+                cancellationToken);
+        if (battleIsActive)
+        {
+            return new FoodWorkerRecoveryResult(null, null);
+        }
+
+        var settlement = await database.Settlements
+            .SingleAsync(x => x.Id == LivingRealmsDbContext.StonehavenVillageId, cancellationToken);
+        var faction = await database.Factions
+            .Include(x => x.Resources)
+            .SingleAsync(x => x.Id == LivingRealmsDbContext.DarkwoodClanId, cancellationToken);
+        var residents = await database.SettlementResidents
+            .Where(x => x.SettlementId == settlement.Id)
+            .ToListAsync(cancellationToken);
+        var creatures = await database.Creatures
+            .Where(x => x.RegionId == LivingRealmsDbContext.StonehavenValleyId)
+            .ToListAsync(cancellationToken);
+        var availableWildlife = creatures.Count(x =>
+            WorldSurvivalService.IsHuntableWildlife(x) &&
+            WorldSurvivalService.IsLiving(x));
+
+        var stonehavenEconomy = WorldSurvivalService.CalculateStonehaven(
+            residents,
+            settlement.Food,
+            availableWildlife);
+        var darkwoodEconomy = WorldSurvivalService.CalculateDarkwood(
+            creatures.Where(x => x.FactionId == faction.Id),
+            faction.Resources.FirstOrDefault(x => x.Kind == ResourceKind.Food)?.Amount ?? 0,
+            availableWildlife);
+
+        var stonehavenAction = await RecruitStonehavenFoodWorkerAsync(
+            settlement,
+            residents,
+            stonehavenEconomy,
+            cancellationToken);
+        var darkwoodAction = await RecruitDarkwoodFoodWorkerAsync(
+            faction,
+            creatures,
+            darkwoodEconomy,
+            cancellationToken);
+
+        if ((stonehavenAction is not null || darkwoodAction is not null) &&
+            database.ChangeTracker.HasChanges())
+        {
+            await database.SaveChangesAsync(cancellationToken);
+        }
+
+        return new FoodWorkerRecoveryResult(stonehavenAction, darkwoodAction);
+    }
+
     public async Task EnsureHuntableWildlifeAsync(
         bool saveChanges = true,
         CancellationToken cancellationToken = default)
@@ -379,6 +441,132 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
             UpdatedAt = createdAt
         };
     }
+
+    private async Task<FoodWorkerRecoveryAction?> RecruitStonehavenFoodWorkerAsync(
+        Settlement settlement,
+        IReadOnlyCollection<SettlementResident> residents,
+        FoodEconomySnapshot economy,
+        CancellationToken cancellationToken)
+    {
+        if (settlement.IsDestroyed ||
+            economy.RecommendedRecruitmentRole == "None" ||
+            economy.NetFoodPerHour >= WorldSurvivalService.TargetFoodSurplusPerHour)
+        {
+            return null;
+        }
+
+        var role = economy.RecommendedRecruitmentRole;
+        if (settlement.Population < StonehavenHousingCapacity)
+        {
+            var existingIds = residents.Select(x => x.Id).ToHashSet();
+            settlement.Population++;
+            await EnsureStonehavenResidentsAsync(saveChanges: false, cancellationToken);
+            var arrival = database.ChangeTracker
+                .Entries<SettlementResident>()
+                .Select(x => x.Entity)
+                .First(x => !existingIds.Contains(x.Id) &&
+                            x.SettlementId == settlement.Id &&
+                            WorldSurvivalService.IsLiving(x));
+            return new FoodWorkerRecoveryAction(arrival.Name, arrival.Role, true);
+        }
+
+        var reassigned = residents
+            .Where(x => WorldSurvivalService.IsLiving(x) &&
+                        !x.IsMajor &&
+                        !IsFoodWorker(x.Role))
+            .OrderBy(x => StonehavenReassignmentPriority(x.Role))
+            .ThenBy(x => x.Experience)
+            .FirstOrDefault();
+        if (reassigned is null)
+        {
+            return null;
+        }
+
+        var residentIndex = Array.FindIndex(
+            StonehavenNames,
+            candidate => candidate.Equals(reassigned.Name, StringComparison.OrdinalIgnoreCase));
+        ConfigureStonehavenArrival(
+            reassigned,
+            residentIndex >= 0 ? residentIndex : StartingStonehavenPopulation,
+            role);
+        reassigned.MemorySummary =
+            $"{reassigned.Name} answered Stonehaven's food shortage by retraining as a {role.ToLowerInvariant()}.";
+        return new FoodWorkerRecoveryAction(reassigned.Name, role, false);
+    }
+
+    private async Task<FoodWorkerRecoveryAction?> RecruitDarkwoodFoodWorkerAsync(
+        Faction faction,
+        IReadOnlyCollection<Creature> creatures,
+        FoodEconomySnapshot economy,
+        CancellationToken cancellationToken)
+    {
+        if (economy.RecommendedRecruitmentRole == "None" ||
+            economy.NetFoodPerHour >= WorldSurvivalService.TargetFoodSurplusPerHour)
+        {
+            return null;
+        }
+
+        if (faction.Population < faction.PopulationCapacity)
+        {
+            var existingIds = creatures
+                .Where(x => x.FactionId == faction.Id)
+                .Select(x => x.Id)
+                .ToHashSet();
+            faction.Population++;
+            await EnsureDarkwoodClanMembersAsync(saveChanges: false, cancellationToken);
+            var arrival = database.ChangeTracker
+                .Entries<Creature>()
+                .Select(x => x.Entity)
+                .First(x => !existingIds.Contains(x.Id) &&
+                            x.FactionId == faction.Id &&
+                            WorldSurvivalService.IsLiving(x));
+            return new FoodWorkerRecoveryAction(
+                arrival.Name,
+                arrival.Role ?? "Clan Hunter",
+                true);
+        }
+
+        var reassigned = creatures
+            .Where(x => x.FactionId == faction.Id &&
+                        x.Id != faction.LeaderCreatureId &&
+                        WorldSurvivalService.IsLiving(x) &&
+                        !string.Equals(x.Role, "Clan Hunter", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => DarkwoodReassignmentPriority(x.Role))
+            .ThenBy(x => x.Experience)
+            .FirstOrDefault();
+        if (reassigned is null)
+        {
+            return null;
+        }
+
+        reassigned.Role = "Clan Hunter";
+        reassigned.Title = "Clan Hunter";
+        reassigned.Aggression = 52;
+        reassigned.UpdatedAt = DateTimeOffset.UtcNow;
+        return new FoodWorkerRecoveryAction(reassigned.Name, "Clan Hunter", false);
+    }
+
+    private static bool IsFoodWorker(string role) =>
+        role.Equals("Farmer", StringComparison.OrdinalIgnoreCase) ||
+        role.Equals("Fisher", StringComparison.OrdinalIgnoreCase) ||
+        role.Equals("Hunter", StringComparison.OrdinalIgnoreCase);
+
+    private static int StonehavenReassignmentPriority(string role) => role switch
+    {
+        "Weaver" or "Baker" or "Tanner" or "Brewer" or "Stablehand" or "Scribe" or "Potter" => 0,
+        "Carpenter" or "Mason" or "Herbalist" => 1,
+        "Stonehaven Guard" => 2,
+        _ => 3
+    };
+
+    private static int DarkwoodReassignmentPriority(string? role) => role switch
+    {
+        "Scout" => 0,
+        "Clan Raider" => 1,
+        "Stone Gatherer" or "Woodcutter" => 2,
+        "Camp Guard" => 3,
+        _ => 4
+    };
 
     private static void ConfigureStonehavenArrival(
         SettlementResident resident,
@@ -529,3 +717,12 @@ public sealed class WorldPopulationService(LivingRealmsDbContext database)
         float X,
         float Z);
 }
+
+public sealed record FoodWorkerRecoveryResult(
+    FoodWorkerRecoveryAction? Stonehaven,
+    FoodWorkerRecoveryAction? Darkwood);
+
+public sealed record FoodWorkerRecoveryAction(
+    string Name,
+    string Role,
+    bool IsNewArrival);

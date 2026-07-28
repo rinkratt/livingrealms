@@ -540,6 +540,8 @@ public sealed partial class WorldSimulationService(
         await population.EnsureHuntableWildlifeAsync(cancellationToken: cancellationToken);
         await population.EnsureStonehavenResidentsAsync(cancellationToken: cancellationToken);
         await population.EnsureDarkwoodClanMembersAsync(cancellationToken: cancellationToken);
+        var foodWorkerRecovery = await population.RecruitFoodWorkersForSustainabilityAsync(
+            cancellationToken);
         var faction = await database.Factions
             .Include(x => x.Resources)
             .Include(x => x.Structures)
@@ -603,7 +605,11 @@ public sealed partial class WorldSimulationService(
         var possibleGrowth = (int)Math.Min(24, currentGrowthCycles - previousGrowthCycles);
         for (var cycle = 0; cycle < possibleGrowth; cycle++)
         {
-            if (faction.Population >= faction.PopulationCapacity || resources[ResourceKind.Food].Amount < 15)
+            var foodSurplusAfterGrowth =
+                darkwoodFoodEconomy.FoodProducedPerHour - (faction.Population + 1);
+            if (faction.Population >= faction.PopulationCapacity ||
+                resources[ResourceKind.Food].Amount < 15 ||
+                foodSurplusAfterGrowth < WorldSurvivalService.MinimumFoodSurplusAfterGrowthPerHour)
             {
                 break;
             }
@@ -630,11 +636,14 @@ public sealed partial class WorldSimulationService(
             const int arrivalFoodCost = 32;
             const int arrivalWoodCost = 20;
             const int arrivalStoneCost = 12;
+            var foodSurplusAfterGrowth =
+                stonehavenFoodEconomy.FoodProducedPerHour - nextPopulation;
             if (settlement.IsDestroyed ||
                 settlement.Population >= WorldPopulationService.StonehavenHousingCapacity ||
                 settlement.Food < foodReserve + arrivalFoodCost ||
                 settlement.Wood < arrivalWoodCost ||
-                settlement.Stone < arrivalStoneCost)
+                settlement.Stone < arrivalStoneCost ||
+                foodSurplusAfterGrowth < WorldSurvivalService.MinimumFoodSurplusAfterGrowthPerHour)
             {
                 break;
             }
@@ -830,6 +839,34 @@ public sealed partial class WorldSimulationService(
                 $"{hunting.StonehavenHunter} and {hunting.DarkwoodHunter} met while pursuing valley wildlife. " +
                 $"{hunting.Skirmishes} territorial skirmish(es) left both hunting parties injured, and their persistent positions now mark the contested hunting ground.",
                 3,
+                faction,
+                leader,
+                payload.ProcessedAt);
+        }
+
+        if (foodWorkerRecovery.Stonehaven is not null)
+        {
+            AddHistory(
+                "food_worker_recruited",
+                $"{foodWorkerRecovery.Stonehaven.Name} answered Stonehaven's food shortage",
+                $"{foodWorkerRecovery.Stonehaven.Name} " +
+                $"{(foodWorkerRecovery.Stonehaven.IsNewArrival ? "joined Stonehaven" : "changed duties")} " +
+                $"as a {foodWorkerRecovery.Stonehaven.Role}. Food staffing now takes priority over ordinary population growth.",
+                2,
+                faction,
+                leader,
+                payload.ProcessedAt);
+        }
+
+        if (foodWorkerRecovery.Darkwood is not null)
+        {
+            AddHistory(
+                "food_worker_recruited",
+                $"{foodWorkerRecovery.Darkwood.Name} joined Darkwood's hunters",
+                $"{foodWorkerRecovery.Darkwood.Name} " +
+                $"{(foodWorkerRecovery.Darkwood.IsNewArrival ? "joined the clan" : "changed duties")} " +
+                "as a Clan Hunter so the camp can feed itself before expanding again.",
+                2,
                 faction,
                 leader,
                 payload.ProcessedAt);

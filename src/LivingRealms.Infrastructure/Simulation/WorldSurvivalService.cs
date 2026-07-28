@@ -5,6 +5,8 @@ namespace LivingRealms.Infrastructure.Simulation;
 public static class WorldSurvivalService
 {
     public const int FoodConsumedPerLivingMemberPerHour = 1;
+    public const int TargetFoodSurplusPerHour = 3;
+    public const int MinimumFoodSurplusAfterGrowthPerHour = 2;
     public const int StonehavenFarmerFoodPerHour = 5;
     public const int StonehavenFisherFoodPerHour = 3;
     public const int StonehavenHunterFoodPerHour = 6;
@@ -152,7 +154,7 @@ public static class WorldSurvivalService
         {
             return "Fisher";
         }
-        if (production - population > 2)
+        if (production - population >= TargetFoodSurplusPerHour)
         {
             return "None";
         }
@@ -168,7 +170,7 @@ public static class WorldSurvivalService
         int hunters,
         int production)
     {
-        if (hunters == 0 || production - population <= 2)
+        if (hunters == 0 || production - population < TargetFoodSurplusPerHour)
         {
             return "Clan Hunter";
         }
