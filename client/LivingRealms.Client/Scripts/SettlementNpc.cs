@@ -38,6 +38,10 @@ public partial class SettlementNpc : CharacterBody3D
     private bool _hasAmbientTarget;
     private int _guardPatrolWaypoint;
     private const float AttackAnimationDuration = 0.58f;
+    // The supplied herbalist source is authored at roughly 1.82 times the
+    // scale of the established Elara model. Normalize it before applying the
+    // resident profile so every adult remains at the same world scale.
+    private const float ElowenImportedModelScale = 0.56f;
     private static readonly Vector3[] StonehavenGuardPatrol =
     [
         new(-7.5f, 0.08f, 0.5f),
@@ -704,7 +708,10 @@ public partial class SettlementNpc : CharacterBody3D
 
         var model = packed.Instantiate<Node3D>();
         model.Name = $"{ResidentName.Replace(" ", string.Empty)}RealisticModel";
-        model.Scale = Vector3.One * profile.BodyScale;
+        var importedAssetScale = ResidentName.Equals("Elowen", StringComparison.OrdinalIgnoreCase)
+            ? ElowenImportedModelScale
+            : 1.0f;
+        model.Scale = Vector3.One * profile.BodyScale * importedAssetScale;
         _visualRoot.AddChild(model);
         var skeleton = FindDescendant<Skeleton3D>(model);
         if (skeleton is null)

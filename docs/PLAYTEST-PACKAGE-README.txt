@@ -1,4 +1,4 @@
-LIVING REALMS WINDOWS PLAYTEST 0.9.18
+LIVING REALMS WINDOWS PLAYTEST 0.9.19
 
 1. Extract the entire ZIP file to a normal folder.
 2. Run LivingRealms.exe. Keep all extracted files together.
@@ -36,7 +36,15 @@ IMPORTANT CONTROLS
 - F12: save a PNG screenshot to Pictures\Living Realms
 - Escape: menu
 
+BUILD 0.9.19
+
+- Elowen is normalized to the established player and NPC scale.
+- B1 farmhouses use the supplied detailed medieval-house model.
+- Supplied trees, bushes, grass, and mossy rocks replace the placeholder nature art.
+- Imported assets are now checked against a meter-based world-scale standard.
+
 BUILD 0.9.18
+
 - Replaces Elowen's shared prototype body with the supplied magic-girl
   Blender character as her unique healer/herbalist appearance.
 - Preserves the authored PBR textures, witch hat, clothing, and hair while

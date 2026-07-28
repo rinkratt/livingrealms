@@ -96,17 +96,26 @@ jobs:
             throw "Godot export failed with exit code $LASTEXITCODE."
           }
 
+      - name: Validate imported game scale
+        shell: pwsh
+        run: |
+          & $env:GODOT_CONSOLE --headless --path client/LivingRealms.Client --script ../../tools/godot/validate_game_scale.gd
+          if ($LASTEXITCODE -ne 0) {
+            throw "Imported asset scale validation failed with exit code $LASTEXITCODE."
+          }
+
       - name: Package and verify Windows ZIP
         shell: pwsh
         run: |
           $notes = @(
-            "Elowen now uses the supplied detailed magic-girl Blender character as her unique healer and herbalist appearance.",
-            "The source PBR textures are optimized for playtest performance and download size.",
-            "Elowen retains her existing movement, dialogue, herb staff, tonic trading, medicine work, and raid-support behavior."
+            "Elowen is normalized to the established player and NPC scale.",
+            "B1 farmhouses now use the supplied medieval-house model.",
+            "Supplied rocks, trees, bushes, and grass replace placeholder environment art.",
+            "All imported assets pass a meter-based game-scale validation before release."
           )
           $result = & .\tools\package_windows_playtest.ps1 `
             -Version $env:RELEASE_VERSION `
-            -ReleaseName "elowen-herbalist" `
+            -ReleaseName "world-scale-environment" `
             -Notes $notes
 
           $zip = $result.Package
@@ -125,10 +134,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           @"
-          Build $env:RELEASE_VERSION adds the supplied magic-girl character as Elowen, Stonehaven's healer and herbalist.
+          Build $env:RELEASE_VERSION upgrades the Living Realms environment while enforcing consistent world scale.
 
-          - Unique optimized PBR character and Rigify skeleton
-          - Existing healer dialogue, tonic trading, medicine work, and raid support retained
+          - Elowen normalized to the established character height
+          - Detailed supplied medieval farmhouses in B1
+          - Optimized supplied rocks, trees, bushes, and grass
+          - Meter-based scale validation for future imported assets
           - Full portable Windows playtest ZIP with checksum and update manifest
           "@ | Set-Content -LiteralPath release-notes.md
 

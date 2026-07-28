@@ -17,6 +17,29 @@ public partial class StonehavenValley : Node3D
     private const float DarkwoodCampClearingRadius = 19.5f;
     private const string StylizedEnvironmentScenePath = "res://Assets/Environment/stonehaven_vertical_slice.glb";
     private const string WillowmereDragonScenePath = "res://Assets/Creatures3D/dragon-3dhaupt.glb";
+    private const string MedievalFarmhouseScenePath =
+        "res://Assets/Environment/Production/medieval-farmhouse.glb";
+    private const string MeadowGrassScenePath =
+        "res://Assets/Environment/Production/meadow-grass-clump.glb";
+    private const string WoodlandBushScenePath =
+        "res://Assets/Environment/Production/woodland-bush.glb";
+    private static readonly string[] ProductionTreeScenePaths =
+    [
+        "res://Assets/Environment/Production/meadow-oak.glb",
+        "res://Assets/Environment/Production/mature-broadleaf.glb"
+    ];
+    private static readonly string[] ProductionRockScenePaths =
+    [
+        "res://Assets/Environment/Production/moss-rock-01.glb",
+        "res://Assets/Environment/Production/moss-rock-02.glb",
+        "res://Assets/Environment/Production/moss-rock-03.glb"
+    ];
+    private static readonly Vector3[] ProductionRockDimensions =
+    [
+        new(2.0f, 1.001575f, 1.390607f),
+        new(2.0f, 0.570262f, 1.870107f),
+        new(2.0f, 1.088725f, 1.203366f)
+    ];
     private static readonly Vector3 DarkwoodCampCenter = new(-116.0f, 0, -104.0f);
     private static readonly Vector3 MirrorwaterLakeCenter = new(101.0f, 0, -20.0f);
     private static readonly Vector3 IronMineCenter = new(104.0f, 0, -104.0f);
@@ -62,6 +85,10 @@ public partial class StonehavenValley : Node3D
     private readonly List<WorldPathObstacle> _pathObstacles = [];
     private readonly List<WorldPathObstacle> _constructionPathObstacles = [];
     private readonly Dictionary<string, Node3D> _worldRegionRoots = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, PackedScene> _productionEnvironmentScenes =
+        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Mesh> _productionEnvironmentMeshes =
+        new(StringComparer.OrdinalIgnoreCase);
     private WorldPathfinder _pathfinder = null!;
     private ThirdPersonPlayer _player = null!;
     private Label _coordinates = null!;
@@ -2894,7 +2921,8 @@ public partial class StonehavenValley : Node3D
         IsTreeDecorationName(name) ||
         name.StartsWith("Shrub_", StringComparison.OrdinalIgnoreCase) ||
         name.StartsWith("ShrubFlower_", StringComparison.OrdinalIgnoreCase) ||
-        name.StartsWith("ValleyRock_", StringComparison.OrdinalIgnoreCase);
+        name.StartsWith("ValleyRock_", StringComparison.OrdinalIgnoreCase) ||
+        name.StartsWith("ClusteredGrassFields", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsTreeDecorationName(string name) =>
         name.StartsWith("Tree_", StringComparison.OrdinalIgnoreCase) ||
@@ -2908,7 +2936,7 @@ public partial class StonehavenValley : Node3D
         {
             if (child is GeometryInstance3D geometry &&
                 (child.Name.ToString().StartsWith("Wall_", StringComparison.OrdinalIgnoreCase) ||
-                 IsTreeDecorationName(child.Name.ToString())))
+                 IsNatureDecorationName(child.Name.ToString())))
             {
                 geometry.Visible = false;
             }
@@ -2979,6 +3007,96 @@ public partial class StonehavenValley : Node3D
         }
 
         AddChild(node);
+    }
+
+    private Node3D? InstantiateProductionEnvironmentAsset(string path, string name)
+    {
+        if (!_productionEnvironmentScenes.TryGetValue(path, out var packed))
+        {
+            if (!ResourceLoader.Exists(path))
+            {
+                GD.PushWarning($"Production environment asset was not found: {path}");
+                return null;
+            }
+
+            packed = GD.Load<PackedScene>(path);
+            if (packed is null)
+            {
+                GD.PushWarning($"Production environment asset could not be loaded: {path}");
+                return null;
+            }
+            _productionEnvironmentScenes[path] = packed;
+        }
+
+        var instance = packed.Instantiate<Node3D>();
+        instance.Name = name;
+        return instance;
+    }
+
+    private bool AddProductionEnvironmentVisual(
+        Node3D parent,
+        string path,
+        string name,
+        Vector3 scale,
+        float yaw = 0.0f,
+        Vector3? localPosition = null)
+    {
+        var instance = InstantiateProductionEnvironmentAsset(path, name);
+        if (instance is null)
+        {
+            return false;
+        }
+
+        instance.Position = localPosition ?? Vector3.Zero;
+        instance.Rotation = new Vector3(0, yaw, 0);
+        instance.Scale = scale;
+        parent.AddChild(instance);
+        return true;
+    }
+
+    private Mesh? GetProductionEnvironmentMesh(string path)
+    {
+        if (_productionEnvironmentMeshes.TryGetValue(path, out var cached))
+        {
+            return cached;
+        }
+
+        var instance = InstantiateProductionEnvironmentAsset(path, "MeshSource");
+        if (instance is null)
+        {
+            return null;
+        }
+
+        var meshInstance = FindEnvironmentMeshInstance(instance);
+        if (meshInstance?.Mesh is null)
+        {
+            instance.Free();
+            GD.PushWarning($"Production environment asset contains no mesh: {path}");
+            return null;
+        }
+
+        var mesh = meshInstance.Mesh;
+        _productionEnvironmentMeshes[path] = mesh;
+        instance.Free();
+        return mesh;
+    }
+
+    private static MeshInstance3D? FindEnvironmentMeshInstance(Node node)
+    {
+        if (node is MeshInstance3D meshInstance && meshInstance.Mesh is not null)
+        {
+            return meshInstance;
+        }
+
+        foreach (var child in node.GetChildren())
+        {
+            var found = FindEnvironmentMeshInstance(child);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+        return null;
     }
 
     private void BuildValleyFloor()
@@ -3771,6 +3889,38 @@ public partial class StonehavenValley : Node3D
 
     private void AddRegionalHouse(string name, Vector3 position, Color wallColor, Vector3 front)
     {
+        var yaw = MathF.Abs(front.X) > 0.5f
+            ? front.X > 0 ? -Mathf.Pi * 0.5f : Mathf.Pi * 0.5f
+            : front.Z > 0 ? Mathf.Pi : 0.0f;
+        var productionHouse = new StaticBody3D
+        {
+            Name = name,
+            Position = position,
+            Rotation = new Vector3(0, yaw, 0),
+            CollisionLayer = 1,
+            CollisionMask = 2 | 4 | 8
+        };
+        var houseCollisionSize = new Vector3(7.25f, 6.9f, 8.0f);
+        productionHouse.AddChild(new CollisionShape3D
+        {
+            Position = new Vector3(0, houseCollisionSize.Y * 0.5f, 0),
+            Shape = new BoxShape3D { Size = houseCollisionSize }
+        });
+        if (AddProductionEnvironmentVisual(
+                productionHouse,
+                MedievalFarmhouseScenePath,
+                name + "MedievalHouse",
+                Vector3.One))
+        {
+            AddWorldNode(productionHouse, position);
+            _pathObstacles.Add(WorldPathObstacle.FromRotatedBox(
+                position + new Vector3(0, houseCollisionSize.Y * 0.5f, 0),
+                houseCollisionSize,
+                yaw));
+            return;
+        }
+        productionHouse.Free();
+
         AddFeatureStaticBox(name, position + new Vector3(0, 1.55f, 0),
             new Vector3(7.0f, 3.1f, 6.0f), wallColor);
         AddFeatureDecoration(name + "Roof", new CylinderMesh
@@ -3867,6 +4017,7 @@ public partial class StonehavenValley : Node3D
         {
             for (var gridX = -1; gridX <= 1; gridX++)
             {
+                AddProductionGrassField(gridX, gridZ);
                 if (gridX == 0 && gridZ == 0)
                 {
                     continue;
@@ -3888,6 +4039,15 @@ public partial class StonehavenValley : Node3D
                         1.25f + NatureHash01(gridX, gridZ, index, 790) * 1.55f,
                         0.75f + NatureHash01(gridX, gridZ, index, 791) * 1.05f,
                         1.05f + NatureHash01(gridX, gridZ, index, 792) * 1.45f));
+                }
+
+                var bushCount = GetRegionBushCount(gridX, gridZ);
+                for (var index = 0; index < bushCount; index++)
+                {
+                    var position = GetOrganicNaturePosition(gridX, gridZ, index, bushCount, 1100);
+                    AddBush(
+                        new Vector3(position.X, 0, position.Y),
+                        0.72f + NatureHash01(gridX, gridZ, index, 1190) * 0.42f);
                 }
             }
         }
@@ -3918,6 +4078,97 @@ public partial class StonehavenValley : Node3D
         (1, 1) => 12,
         _ => 0
     };
+
+    private static int GetRegionBushCount(int gridX, int gridZ) => (gridX, gridZ) switch
+    {
+        (-1, -1) => 3,
+        (0, -1) => 2,
+        (1, -1) => 2,
+        (-1, 0) => 2,
+        (1, 0) => 3,
+        (-1, 1) => 3,
+        (0, 1) => 2,
+        (1, 1) => 1,
+        _ => 0
+    };
+
+    private void AddProductionGrassField(int gridX, int gridZ)
+    {
+        var mesh = GetProductionEnvironmentMesh(MeadowGrassScenePath);
+        if (mesh is null)
+        {
+            return;
+        }
+
+        var transforms = new List<Transform3D>();
+        const int requestedCount = 30;
+        for (var index = 0; index < requestedCount; index++)
+        {
+            var point = GetOrganicNaturePosition(gridX, gridZ, index, requestedCount, 1500);
+            var position = new Vector3(point.X, 0.012f, point.Y);
+            var lakeX = (position.X - MirrorwaterLakeCenter.X) / 38.0f;
+            var lakeZ = (position.Z - MirrorwaterLakeCenter.Z) / 31.0f;
+            if (lakeX * lakeX + lakeZ * lakeZ <= 1.0f ||
+                IsInsideDarkwoodCampClearing(position.X, position.Z))
+            {
+                continue;
+            }
+
+            var scale = 0.74f + NatureHash01(gridX, gridZ, index, 1530) * 0.52f;
+            var yaw = NatureHash01(gridX, gridZ, index, 1531) * Mathf.Tau;
+            var basis = new Basis(Vector3.Up, yaw).Scaled(new Vector3(scale, scale, scale));
+            transforms.Add(new Transform3D(basis, position));
+        }
+
+        if (transforms.Count == 0)
+        {
+            return;
+        }
+
+        var multiMesh = new MultiMesh
+        {
+            TransformFormat = MultiMesh.TransformFormatEnum.Transform3D,
+            Mesh = mesh,
+            InstanceCount = transforms.Count
+        };
+        for (var index = 0; index < transforms.Count; index++)
+        {
+            multiMesh.SetInstanceTransform(index, transforms[index]);
+        }
+
+        var grassField = new MultiMeshInstance3D
+        {
+            Name = $"ProductionGrassField-{gridX}-{gridZ}",
+            Multimesh = multiMesh,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            VisibilityRangeEnd = 62.0f,
+            VisibilityRangeFadeMode = GeometryInstance3D.VisibilityRangeFadeModeEnum.Self
+        };
+        AddWorldNode(
+            grassField,
+            new Vector3(gridX * WorldGridSize, 0, gridZ * WorldGridSize));
+    }
+
+    private void AddBush(Vector3 position, float scale)
+    {
+        if (IsInsideReservedConstructionFootprint(position))
+        {
+            return;
+        }
+
+        var bush = InstantiateProductionEnvironmentAsset(
+            WoodlandBushScenePath,
+            "WoodlandBush");
+        if (bush is null)
+        {
+            return;
+        }
+
+        bush.Position = position;
+        bush.Rotation = new Vector3(0, Mathf.PosMod(position.X * 0.17f + position.Z * 0.11f, Mathf.Tau), 0);
+        bush.Scale = Vector3.One * scale;
+        AddWorldNode(bush, position);
+    }
 
     private static float NatureHash01(int gridX, int gridZ, int index, int salt)
     {
@@ -4316,9 +4567,22 @@ public partial class StonehavenValley : Node3D
         });
         var resourceLabel = CreateNaturalResourceLabel(
             "TREE\nH  CHOP",
-            new Vector3(0, 5.8f * scale, 0));
+            new Vector3(0, 7.7f * scale, 0));
         body.AddChild(resourceLabel);
         _naturalResourceTargets.Add(new NaturalResourceTarget(body, resourceLabel, "Wood", "wild tree"));
+        var treeVariant = Mathf.Abs(Mathf.RoundToInt(position.X * 7.0f + position.Z * 11.0f)) %
+                          ProductionTreeScenePaths.Length;
+        var treeYaw = Mathf.PosMod(position.X * 0.071f + position.Z * 0.043f, Mathf.Tau);
+        if (AddProductionEnvironmentVisual(
+                body,
+                ProductionTreeScenePaths[treeVariant],
+                $"ProductionTree{treeVariant + 1}",
+                Vector3.One * scale,
+                treeYaw))
+        {
+            return;
+        }
+
         body.AddChild(CreateMesh("Trunk", new CylinderMesh
         {
             TopRadius = 0.23f * scale,
@@ -4416,11 +4680,12 @@ public partial class StonehavenValley : Node3D
             return;
         }
 
+        var yaw = Mathf.PosMod(position.X * 0.07f + position.Z * 0.09f, Mathf.Tau);
         var body = new StaticBody3D
         {
             Name = "Rock",
-            Position = position + new Vector3(0, size.Y * 0.42f, 0),
-            Rotation = new Vector3(0.12f, position.X * 0.07f, 0.08f),
+            Position = position,
+            Rotation = new Vector3(0, yaw, 0),
             CollisionLayer = 1,
             CollisionMask = 2
         };
@@ -4428,14 +4693,29 @@ public partial class StonehavenValley : Node3D
         _pathObstacles.Add(WorldPathObstacle.FromRotatedBox(
             position,
             size * 0.82f,
-            position.X * 0.07f));
-        body.AddChild(new CollisionShape3D { Shape = new BoxShape3D { Size = size * 0.82f } });
+            yaw));
+        body.AddChild(new CollisionShape3D
+        {
+            Position = new Vector3(0, size.Y * 0.42f, 0),
+            Shape = new BoxShape3D { Size = size * 0.82f }
+        });
         var resourceLabel = CreateNaturalResourceLabel(
             "STONE\nH  MINE",
-            new Vector3(0, size.Y * 0.95f + 1.0f, 0));
+            new Vector3(0, size.Y + 1.0f, 0));
         body.AddChild(resourceLabel);
         _naturalResourceTargets.Add(new NaturalResourceTarget(body, resourceLabel, "Stone", "stone outcrop"));
-        if (_stylizedEnvironmentLoaded)
+
+        var rockVariant = Mathf.Abs(Mathf.RoundToInt(position.X * 13.0f + position.Z * 5.0f)) %
+                          ProductionRockScenePaths.Length;
+        var sourceDimensions = ProductionRockDimensions[rockVariant];
+        if (AddProductionEnvironmentVisual(
+                body,
+                ProductionRockScenePaths[rockVariant],
+                $"ProductionRock{rockVariant + 1}",
+                new Vector3(
+                    size.X / sourceDimensions.X,
+                    size.Y / sourceDimensions.Y,
+                    size.Z / sourceDimensions.Z)))
         {
             return;
         }
@@ -4446,7 +4726,7 @@ public partial class StonehavenValley : Node3D
             Height = 2.0f,
             RadialSegments = 8,
             Rings = 4
-        }, Vector3.Zero, Vector3.Zero, new Color("4a4b47"));
+        }, new Vector3(0, size.Y * 0.42f, 0), Vector3.Zero, new Color("4a4b47"));
         mesh.Scale = size * 0.52f;
         body.AddChild(mesh);
     }

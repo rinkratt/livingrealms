@@ -56,12 +56,40 @@ def main() -> None:
         print(f"BOUNDS_MAX={maximum.x:.4f},{maximum.y:.4f},{maximum.z:.4f}")
         print(f"DIMENSIONS={dimensions.x:.4f},{dimensions.y:.4f},{dimensions.z:.4f}")
 
+    for collection in sorted(bpy.data.collections, key=lambda item: item.name.lower()):
+        object_names = ",".join(obj.name for obj in collection.objects)
+        collection_corners = [
+            obj.matrix_world @ Vector(corner)
+            for obj in collection.objects
+            if obj.type in {"MESH", "CURVE"} and not obj.hide_render
+            for corner in obj.bound_box
+        ]
+        if collection_corners:
+            collection_minimum = Vector(
+                min(corner[index] for corner in collection_corners) for index in range(3)
+            )
+            collection_maximum = Vector(
+                max(corner[index] for corner in collection_corners) for index in range(3)
+            )
+            collection_dimensions = collection_maximum - collection_minimum
+            bounds_text = (
+                f"|minimum={collection_minimum.x:.3f},{collection_minimum.y:.3f},{collection_minimum.z:.3f}"
+                f"|maximum={collection_maximum.x:.3f},{collection_maximum.y:.3f},{collection_maximum.z:.3f}"
+                f"|dimensions={collection_dimensions.x:.3f},{collection_dimensions.y:.3f},{collection_dimensions.z:.3f}"
+            )
+        else:
+            bounds_text = ""
+        print(f"COLLECTION={collection.name}{bounds_text}|objects={object_names}")
+
     for obj in sorted(bpy.data.objects, key=lambda item: item.name.lower()):
         if obj.type == "MESH":
             modifiers = ",".join(modifier.type for modifier in obj.modifiers) or "none"
             print(
                 f"MESH={obj.name}|verts={len(obj.data.vertices)}|polys={len(obj.data.polygons)}"
                 f"|materials={len(obj.material_slots)}|modifiers={modifiers}|parent={obj.parent.name if obj.parent else 'none'}"
+                f"|location={obj.location.x:.3f},{obj.location.y:.3f},{obj.location.z:.3f}"
+                f"|dimensions={obj.dimensions.x:.3f},{obj.dimensions.y:.3f},{obj.dimensions.z:.3f}"
+                f"|hidden={obj.hide_render}"
             )
         elif obj.type == "ARMATURE":
             deform_bones = [bone.name for bone in obj.data.bones if bone.use_deform]
